@@ -151,3 +151,36 @@ test('additive migration preserves old stock and merchant edits across reopening
  app.db.prepare('UPDATE products SET enabled=0,version=5 WHERE id=?').run('cup');await app.close();app=undefined;
  app=await buildApp({dbPath:path});p=app.db.prepare('SELECT * FROM products WHERE id=?').get('cup');assert.equal(p.stock,3);assert.equal(p.version,5);assert.equal(p.enabled,0);
 });
+
+test('order CSV export is admin-only, bounded, private and spreadsheet-safe',async t=>{
+ const {admin,call,checkout,app}=await fixture(t);
+ const url='/api/admin/shop-orders/export.csv';
+ assert.equal((await call('GET',url)).statusCode,403);
+ for(const query of ['limit=0','limit=1001','limit=1.5','status=unknown'])assert.equal((await admin('GET',`${url}?${query}`)).statusCode,400);
+ const first=(await checkout('headphones')).json().order;
+ const second=(await checkout('cup')).json().order;
+ app.db.prepare('UPDATE shop_items SET name=? WHERE order_id=?').run('  =HYPERLINK("bad")\r\n测试,商品',first.id);
+ await call('POST',`/api/shop/orders/${first.id}/demo-pay`,{});
+ assert.equal((await admin('POST',`/api/admin/shop-orders/${first.id}/ship`,{carrier:'@恶意公式',tracking:'TEST12345'})).statusCode,200);
+ const result=await admin('GET',`${url}?status=shipped&limit=1`);
+ assert.equal(result.statusCode,200);
+ assert.match(result.headers['content-type'],/^text\/csv; charset=utf-8/);
+ assert.match(result.headers['content-disposition'],/attachment/);
+ assert.equal(result.headers['cache-control'],'no-store');
+ assert.ok(result.body.startsWith('\uFEFF'));
+ assert.ok(result.body.includes(first.number));assert.ok(!result.body.includes(second.number));
+ assert.ok(result.body.includes('"\'  =HYPERLINK(""bad"")\r\n测试,商品 × 1"'));
+ assert.ok(result.body.includes('"\'@恶意公式"'));
+ assert.ok(result.body.includes('"299.00"'));
+ for(const privateValue of ['13800000000','测试省测试市演示地址','address_json','request_key','fingerprint'])assert.ok(!result.body.includes(privateValue));
+ const audit=app.db.prepare("SELECT detail FROM audit WHERE action='order.export'").all();
+ assert.equal(audit.length,1);assert.deepEqual(JSON.parse(audit[0].detail),{count:1,limit:1,status:'shipped'});
+ const bounded=await admin('GET',`${url}?limit=1`);
+ assert.equal(bounded.statusCode,200);assert.equal(JSON.parse(app.db.prepare("SELECT detail FROM audit WHERE action='order.export' ORDER BY rowid DESC LIMIT 1").get().detail).count,1);
+ const copy=app.db.prepare('INSERT INTO shop_orders SELECT ?,user_id,?,amount,reward,status,?,fingerprint,address_json,coupon_id,created_at FROM shop_orders WHERE id=?');
+ for(let i=0;i<105;i++)copy.run(`export-test-${i}`,`EXPORT-TEST-${i}`,`export-key-${i}`,second.id);
+ const defaults=await admin('GET',`${url}?status=pending`);
+ assert.equal(defaults.statusCode,200);assert.equal(defaults.body.split('\r\n').length,102);
+ const allBounded=await admin('GET',`${url}?status=pending&limit=1000`);
+ assert.equal(allBounded.statusCode,200);assert.equal(allBounded.body.split('\r\n').length,108);
+});

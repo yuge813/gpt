@@ -7,6 +7,8 @@ const section=ref('overview'),token=ref(''),authenticated=ref(false),busy=ref(fa
 const overview=ref<any>(null),products=ref<any[]>([]),orders=ref<any[]>([]),afterSales=ref<any[]>([]),rules=ref({purchasePointsPerYuan:1}),ruleValue=ref('1')
 const search=ref(''),orderFilter=ref('全部'),reviewFilter=ref('pending'),activeOrder=ref<any>(null),activeReview=ref<any>(null),reviewDecision=ref<'approve'|'reject'>('approve'),reviewNote=ref(''),carrier=ref(''),tracking=ref(''),showAddress=ref('')
 const restrictionId=ref(''),restrictionReason=ref(''),restrictionBlocked=ref(true)
+const exporting=ref(false)
+let exportController:AbortController|undefined
 const arts=['headphones','lamp','speaker','cup','bag','mouse','coupon']
 const categories=['数码好物','生活美学','出行装备','专属权益']
 const form=ref({id:'',version:0,name:'',subtitle:'',category:'数码好物',price:'',points:'',stock:'',art:'headphones',badge:'精选好物',enabled:true})
@@ -38,12 +40,36 @@ async function login(){
  catch(e:any){error.value=e.message;if(e.status===401||e.status===403)authenticated.value=false}
  finally{busy.value=false}
 }
-function logout(){token.value='';authenticated.value=false;overview.value=null;products.value=[];orders.value=[];afterSales.value=[];modal.value='';error.value='';notify('运营凭证已从页面内存清除')}
+function logout(){exportController?.abort();token.value='';authenticated.value=false;overview.value=null;products.value=[];orders.value=[];afterSales.value=[];modal.value='';error.value='';notify('运营凭证已从页面内存清除')}
 async function run(fn:()=>Promise<void>,success='操作已保存'){
  if(busy.value)return;busy.value=true;error.value=''
  try{await fn();modal.value='';try{await loadData();notify(success)}catch(e:any){error.value=e.message;notify(`${success}；但列表刷新失败，请点击刷新数据。`)}}catch(e:any){error.value=e.message;notify(e.status===409?`${e.message}。请刷新后重试；库存或订单未强行覆盖。`:e.message)}finally{busy.value=false}
 }
 async function reload(){if(busy.value)return;try{await loadData();notify('数据已刷新')}catch{}}
+async function exportOrders(){
+ // #ifndef H5
+ notify('请在浏览器打开运营后台下载 CSV 文件')
+ return
+ // #endif
+ // #ifdef H5
+ if(exporting.value||!authenticated.value)return
+ exporting.value=true;error.value=''
+ const controller=new AbortController();exportController=controller
+ const timeout=setTimeout(()=>controller.abort(),30000)
+ try{
+  const base=(import.meta.env.VITE_API_BASE as string|undefined)||'/api'
+  const response=await fetch(`${base.replace(/\/$/,'')}/admin/shop-orders/export.csv?limit=1000`,{headers:{'X-Admin-Token':token.value},credentials:'omit',signal:controller.signal})
+  if(!response.ok){const result=await response.json().catch(()=>null);throw new Error(result?.message||`导出失败（${response.status}）`)}
+  const blob=await response.blob()
+  if(!authenticated.value||controller.signal.aborted)return
+  const url=URL.createObjectURL(blob),link=document.createElement('a')
+  link.href=url;link.download=`aurora-orders-${new Date().toISOString().slice(0,10)}.csv`;document.body.appendChild(link)
+  try{link.click()}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+  notify('已请求下载最近最多 1000 笔订单，文件不含收货地址和手机号')
+ }catch(e:any){if(authenticated.value){error.value=e.name==='AbortError'?'导出已中断或超时，请重试':e.message}}
+ finally{clearTimeout(timeout);exporting.value=false;if(exportController===controller)exportController=undefined}
+ // #endif
+}
 function openProduct(p?:any){
  form.value=p?{id:p.id,version:p.version,name:p.name,subtitle:p.subtitle,category:p.category,price:money(p.price),points:String(p.points),stock:String(p.stock),art:p.art,badge:p.badge,enabled:!!p.enabled}:{id:'',version:0,name:'',subtitle:'',category:'数码好物',price:'',points:'',stock:'',art:'headphones',badge:'精选好物',enabled:true}
  modal.value='product'
@@ -63,7 +89,7 @@ async function toggleAds(){await run(()=>api('/admin/settings','POST',{adsEnable
 async function togglePlacement(p:any){await run(()=>api('/admin/placements','POST',{id:p.id,enabled:!p.enabled}).then(()=>{}),'广告位置预览配置已保存')}
 async function restrict(userId:string,blocked:boolean,reason:string){if(reason.trim().length<3){notify('请填写至少 3 个字符的操作原因');return}await run(()=>api('/admin/restrictions','POST',{userId,blocked,reason:reason.trim()}).then(()=>{}),blocked?'账户奖励与兑换已限制':'账户奖励限制已解除')}
 async function submitRestriction(){await restrict(restrictionId.value.trim(),restrictionBlocked.value,restrictionReason.value)}
-onUnmounted(()=>{token.value='';if(timer)clearTimeout(timer)})
+onUnmounted(()=>{exportController?.abort();token.value='';if(timer)clearTimeout(timer)})
 </script>
 
 <template>
@@ -90,6 +116,7 @@ onUnmounted(()=>{token.value='';if(timer)clearTimeout(timer)})
       </template>
 
       <template v-if="section==='orders'">
+       <view class="ops-export-bar"><view><text class="ops-item-title">订单报表</text><text class="ops-muted">导出全部状态的最近最多 1000 笔测试订单，不含收货地址与手机号。请妥善保管文件。</text></view><button role="button" class="ops-button ops-outline" data-testid="ops-orders-export" :disabled="exporting||busy" :aria-disabled="exporting||busy" @click="exportOrders">{{exporting?'正在导出…':'导出最近订单 CSV'}}</button></view>
        <view class="ops-filters"><view v-for="s in ['全部','待付款','待发货','待收货','已完成','已退款','已取消']" :key="s" :class="{active:orderFilter===s}" @click="orderFilter=s">{{s}}</view></view><view v-if="!filteredOrders.length" class="ops-empty ops-panel">当前筛选下暂无购物订单</view><view v-for="o in filteredOrders" :key="o.id" class="ops-panel ops-order" :data-order-id="o.id"><view class="ops-order-heading"><view><text class="ops-item-title">{{o.number}}</text><text class="ops-muted">{{date(o.created_at)}} · 测试订单</text></view><text class="ops-status" :class="o.status">{{statusNames[o.status]||o.status}}</text></view><view v-for="p in o.items" :key="p.product_id" class="ops-order-item"><image :src="productPhoto(p.art)" mode="aspectFill"/><view><text class="ops-item-title">{{p.name}}</text><text class="ops-muted">¥{{money(p.price)}} × {{p.quantity}}</text></view><text>¥{{money(p.price*p.quantity)}}</text></view><view class="ops-order-meta"><view><text class="ops-muted">订单金额</text><text class="ops-amount">¥{{money(o.amount)}}</text></view><view><text class="ops-muted">购物返积分</text><text>{{o.reward}} 分</text></view><view v-if="o.shipment"><text class="ops-muted">发货记录</text><text>{{o.shipment.carrier}} · {{o.shipment.tracking}}</text></view><view v-if="o.afterSale"><text class="ops-muted">售后状态</text><text>{{reviewNames[o.afterSale.status]||o.afterSale.status}}</text></view></view><view v-if="showAddress===o.id" class="ops-address"><text>{{o.address?.recipient}} · {{o.address?.phone}}</text><text>{{o.address?.detail}}</text></view><view class="ops-order-actions"><button role="button" class="ops-button ops-quiet" @click="showAddress=showAddress===o.id?'':o.id">{{showAddress===o.id?'收起地址':'查看收货地址'}}</button><button v-if="o.status==='paid'" role="button" class="ops-button ops-primary" @click="openShipping(o)">录入发货</button><text v-else class="ops-muted">{{o.status==='shipped'?'等待客户确认收货':'按订单状态处理，不能跳过付款直接发货'}}</text></view></view>
       </template>
 

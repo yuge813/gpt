@@ -4,7 +4,11 @@
 
 ## 免编译服务包（优先）
 
-下载 `delivery/aurora-0.3.0-server.zip` 解压到新目录，在该目录运行：
+下载最新 `delivery/aurora-*-server.zip`，选择“全部解压缩”到新目录，然后双击 `START-WINDOWS.cmd`。不要在 ZIP 预览窗口中直接运行。启动器自动进入自身目录，检查 Node.js >=24、npm 和完整交付文件，首次或依赖不完整时执行锁定版本安装；安装失败会暂停，不会继续启动。再次启动时已有依赖可直接使用。
+
+保持终端窗口开启，按启动输出打开浏览器。启动器不会覆盖已有 `.env`、数据库或备份，不会更改 PowerShell 执行策略。脚本使用英文提示以兼容 Windows 控制台编码；当前在云环境做静态校验，尚未进行 Windows 真机验证。
+
+若使用 PowerShell 手工启动：先在资源管理器打开解压后的文件夹，确认能看到 `package.json`、`package-lock.json`、`public` 和 `server`，在地址栏输入 `powershell` 后回车，再执行：
 
 ```powershell
 npm.cmd ci --omit=dev
@@ -40,6 +44,7 @@ npm.cmd run start:local
 
 | 现象 | 检查与处理 |
 | --- | --- |
+| 找不到 `C:\Users\Administrator\package.json` 或提示锁文件不存在 | 当前目录错误；使用双击启动器，或从完整解压后的项目目录打开 PowerShell；不要删除锁文件或改用 `npm install` 掩盖目录问题 |
 | 禁止运行 `npm.ps1` | 使用 `npm.cmd`，不需要修改执行策略 |
 | 缺少 `vite-plugin-uni/bin/uni.js`、`uni-h5` 或 `postcss.js` | 停止前后端，执行上面的完整 `npm.cmd ci --include=dev`；检查安装是否真的成功 |
 | `ECONNREFUSED 127.0.0.1:3001` | API 尚未启动或已退出；看启动终端 API 错误，不能只运行 HBuilderX 前端 |

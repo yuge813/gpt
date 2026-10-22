@@ -73,6 +73,10 @@ test('shopping receipt earns points, coupon lowers next checkout and merchant co
  await merchantShip(page,order,true)
  await page.getByRole('button',{name:'确认收货，领积分'}).click()
  await expect(page.locator('.m-order-total')).toContainText('已返 598 积分')
+ const orderSearch=page.locator('.m-order-search input')
+ await orderSearch.fill('不存在的商品订单');await expect(page.locator('.m-order-card')).toHaveCount(0)
+ await orderSearch.fill(order.number);await expect(page.locator('.m-order-card')).toHaveCount(1)
+ await page.getByRole('button',{name:'清空订单搜索',exact:true}).click();await expect(orderSearch).toHaveValue('')
  await page.screenshot({path:`docs/screenshots/${info.project.name}-orders.png`,fullPage:true})
  await go(page,info.project.name==='mobile'?'积分':'积分商城')
  await expect(page.locator('.m-points-balance')).toContainText('598')
@@ -204,6 +208,12 @@ test('merchant changes are authenticated, reflected in catalog and protected aga
   await page.getByTestId('ops-reward-save').click();expect((await savedRule).status()).toBe(200)
   expect((await (await page.request.get('/api/points-rules')).json()).purchasePointsPerYuan).toBe(0)
  }finally{await adminPost(page.request,'/admin/points-rules',{purchasePointsPerYuan:1})}
+ await page.getByTestId('ops-nav-orders').click()
+ const downloadEvent=page.waitForEvent('download')
+ await page.getByTestId('ops-orders-export').click()
+ const csvDownload=await downloadEvent
+ expect(csvDownload.suggestedFilename()).toMatch(/\.csv$/)
+ expect(await csvDownload.failure()).toBeNull()
  await page.getByTestId('ops-nav-ads').click()
  await page.getByRole('button',{name:'开启预览'}).first().click();await expect(page.getByRole('button',{name:'关闭预览'})).toHaveCount(1)
  await page.getByRole('button',{name:'关闭预览'}).click();await expect(page.getByRole('button',{name:'关闭预览'})).toHaveCount(0)

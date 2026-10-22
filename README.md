@@ -1,4 +1,4 @@
-# 曜集商城 · 0.3.0 受控试用版
+# 曜集商城 · 0.4.0 受控试用版
 
 购物返积分商城，包含用户商城和独立商家运营后台。uni-app + Vue 3 共用客户端、Fastify + SQLite API。明亮移动商城界面，商品价格与返积分同屏展示。
 
@@ -6,9 +6,9 @@
 
 ## 最简单的运行方式：免前端编译部署包
 
-下载 `delivery/aurora-0.3.0-server.zip` 并解压。需要 Node.js 24+，已验证基线为 Node 24 LTS。
+下载 `delivery/aurora-0.4.0-server.zip` 并解压。需要 Node.js 24+，已验证基线为 Node 24 LTS。
 
-Windows PowerShell 在解压目录执行：
+Windows 可直接双击解压目录的 `START-WINDOWS.cmd`，或在解压目录打开 PowerShell 执行：
 
 ```powershell
 npm.cmd ci --omit=dev
@@ -38,7 +38,13 @@ PowerShell 使用 `npm.cmd` 替代 `npm`，不需要放宽系统执行策略。�
 
 可在 `.env` 设置 `PORT` 和 `FRONTEND_PORT`，Vite 代理随 API 端口调整。已有 `.env` 不会覆盖。不要一边运行 HBuilderX 一边重新安装依赖，也不要同时启动两份项目。
 
-## 本版新增运营能力
+## 本版新增
+
+- Windows 双击启动脚本，自动进入正确目录，避免在用户目录执行 npm。
+- 客户订单按订单号、商品名搜索，结合订单状态筛选。
+- 商家鉴权订单 CSV 导出，限制导出条数并防止表格公式注入。
+
+## 商家运营能力
 
 - 商品创建、编辑、上下架、价格、积分价格与库存；版本校验防止覆盖订单造成的库存变更。
 - 商家查看购物订单、收货信息，登记承运商及单号；客户查看手工物流记录并确认收货。没有实时物流 API。
@@ -70,7 +76,7 @@ H5 输出 `dist/build/h5`，小程序输出 `dist/build/mp-weixin`，App 共用�
 
 - [Windows / HBuilderX 指南](docs/WINDOWS.md)
 - [宝塔部署指南](docs/BAOTA.md)：包含访问范围限制，以及全站 Basic Auth 与 Bearer 会话冲突的修正。
-- [功能验收清单](docs/ACCEPTANCE.md)
+- [功能验收清单](docs/ACCEPTANCE.md) · [交付状态及上线条件](docs/DELIVERY-STATUS.md)
 - [四端和第三方服务边界](docs/PLATFORMS.md)
 - [安全状态](docs/SECURITY.md) · [素材说明](docs/ASSETS.md)
 - 最近验证证据：`docs/validation.json`；真实浏览器截图：`docs/screenshots/`。

@@ -28,6 +28,7 @@ bundle.mkdir(parents=True)
 for name in ('package.json', 'package-lock.json'):
     shutil.copy2(root / 'runtime' / name, bundle / name)
 shutil.copy2(root / '.env.example', bundle / '.env.example')
+shutil.copy2(root / 'START-WINDOWS.cmd', bundle / 'START-WINDOWS.cmd')
 (bundle / '.npmrc').write_text('cache=.npm-cache\nsave-exact=true\n')
 for path in sorted((root / 'server').glob('*.mjs')):
     if not path.name.endswith('.test.mjs'):
@@ -38,13 +39,16 @@ for name in ('serve.mjs', 'runtime.mjs', 'backup.mjs', 'doctor.mjs'):
     shutil.copy2(root / 'scripts' / name, bundle / 'scripts' / name)
 shutil.copytree(build, bundle / 'public')
 (bundle / 'docs').mkdir()
-for name in ('BAOTA.md', 'WINDOWS.md', 'ACCEPTANCE.md', 'SECURITY.md', 'ASSETS.md'):
+for name in ('BAOTA.md', 'WINDOWS.md', 'ACCEPTANCE.md', 'SECURITY.md', 'ASSETS.md', 'DELIVERY-STATUS.md'):
     shutil.copy2(root / 'docs' / name, bundle / 'docs' / name)
 (bundle / 'README.md').write_text(f'''# 曜集 {version} · 预构建测试服务包
 
 本包不需要 HBuilderX、Vite、Vue 编译器或 Python。需要 Node.js 24+ 和 npm。
 
-Windows PowerShell：
+Windows：解压全部文件后双击 `START-WINDOWS.cmd`，自动进入正确目录、检查环境并安装缺失依赖。
+启动器不会修改已有 `.env` 或 `.data`；出错会暂停显示原因。
+
+也可在解压目录使用 PowerShell：
 
 ```powershell
 npm.cmd ci --omit=dev

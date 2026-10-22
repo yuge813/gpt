@@ -1,13 +1,13 @@
 {
-  "verified_at": "2026-10-22T10:53:58.776344+00:00",
-  "version": "0.3.0",
+  "verified_at": "2026-10-22T11:48:54.663365+00:00",
+  "version": "0.4.0",
   "workflow": "controlled trial: customer shopping and receipt rewards with merchant products, shipping and after-sales",
   "typecheck": "passed",
   "automated_tests": {
-    "passed": 30,
+    "passed": 31,
     "failed": 0,
     "skipped": 0,
-    "scope": "25 API/business tests + 5 startup/backup/static-serving tests"
+    "scope": "26 API/business tests + 5 startup/backup/static-serving tests"
   },
   "browser_tests": {
     "passed": 8,
@@ -27,7 +27,9 @@
       "ad preview switches",
       "supplementary signup/check-in/reward demo",
       "search/details/favorites/privacy",
-      "no page errors and no horizontal overflow in shopping/after-sale flows"
+      "no page errors and no horizontal overflow in shopping/after-sale flows",
+      "order search, empty results and reset on desktop/mobile",
+      "authenticated merchant CSV browser download on desktop/mobile"
     ]
   },
   "builds": {
@@ -36,11 +38,12 @@
     "app": "passed shared resource compilation only"
   },
   "prebuilt_runtime": {
-    "npm_ci": "75 packages installed, no front-end compiler required",
+    "npm_ci": "75 packages installed from independent runtime lock",
     "browser_smoke": "passed: 6 products, same-origin API, authenticated merchant catalog, no page errors",
     "sensitive_file_probe": "/.env rejected",
     "static_security_tests": "source root and escaping directory symlinks rejected",
-    "backup": "consistent SQLite snapshot generated and integrity check passed"
+    "backup": "consistent SQLite snapshot generated and integrity check passed",
+    "release_04_injection_smoke": "passed: prebuilt homepage, catalog, private-file denial and CSV authentication"
   },
   "dependency_audit": {
     "info": 0,
@@ -69,5 +72,6 @@
     "documented build-only braces advisory",
     "financial exception resolution when awarded points already spent"
   ],
-  "published_to_internet": false
+  "published_to_internet": false,
+  "windows_launcher": "ASCII/CRLF and static review only; Windows physical execution not performed"
 }
