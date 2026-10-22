@@ -1,0 +1,64 @@
+{
+  "verified_at": "2026-10-22T06:22:43.155793+00:00",
+  "workflow": "demo only",
+  "install": "npm ci --no-fund: passed",
+  "typecheck": "passed",
+  "api_tests": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser_tests": {
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "targets": [
+      "Chromium desktop 1440x1050",
+      "Chromium mobile iPhone 13 emulation"
+    ],
+    "flows": [
+      "consent and demo session",
+      "check-in",
+      "8-second internal reward demo",
+      "redemption and ledger balance",
+      "orders",
+      "admin authentication",
+      "ad placement toggle persistence",
+      "search",
+      "favorites",
+      "privacy dialog",
+      "no page errors; no horizontal overflow"
+    ]
+  },
+  "builds": {
+    "h5": "passed",
+    "mp-weixin": "passed compilation only",
+    "app": "passed resources compilation only"
+  },
+  "not_verified": [
+    "WeChat developer tools and physical mini program",
+    "Android APK/AAB signing and physical devices",
+    "iOS IPA signing and physical devices",
+    "actual ad SDKs and revenue",
+    "Shumei integration",
+    "production authentication, payment and fulfillment",
+    "production security readiness"
+  ],
+  "dependency_audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 21,
+    "critical": 0,
+    "total": 21
+  },
+  "unresolved_advisories": [
+    "GHSA-vfj7-8cjw-p6xm (braces; build-tool dependency propagation)"
+  ],
+  "runtime_startup": "start:local verified with H5 HTTP 200 and API demo session + persisted check-in",
+  "configuration_draft": {
+    "install_script": "saved",
+    "start_skill": "saved",
+    "published": false
+  }
+}

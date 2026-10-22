@@ -1,0 +1,6 @@
+{
+  "name":"曜集", "appid":"", "description":"商城与会员积分体验", "versionName":"0.1.0", "versionCode":"100", "transformPx":false,
+  "vueVersion":"3", "uniStatistics":{"enable":false}, "h5":{"title":"曜集 AURORA","router":{"mode":"hash"}},
+  "app-plus":{"usingComponents":true,"distribute":{"android":{"permissions":[]},"ios":{}}},
+  "mp-weixin":{"appid":"","setting":{"urlCheck":true},"usingComponents":true}
+}
