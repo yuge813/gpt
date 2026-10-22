@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, realpathSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
@@ -12,6 +12,15 @@ export function frontendDirectory(root,requested){
   if(!existsSync(resolve(path,'index.html')))throw new Error('未找到已构建首页。源码项目请先执行 npm run build；部署包请保留 public 文件夹。');
   const actual=realpathSync(path),base=realpathSync(root),rel=relative(base,actual);
   if(!rel||rel.startsWith('..')||isAbsolute(rel)||['.env','package.json','server','.git'].some(name=>existsSync(resolve(actual,name))))throw new Error('静态目录必须是项目内独立的构建目录，不能暴露源码、配置或数据库。');
+  // A symlink anywhere inside the published tree can expose files outside it.
+  // Build output has no need for links; reject them before registering static routes.
+  const pending=[actual];
+  while(pending.length){
+    for(const entry of readdirSync(pending.pop(),{withFileTypes:true})){
+      if(entry.isSymbolicLink())throw new Error('静态构建目录不能包含符号链接，请使用完整独立的构建文件');
+      if(entry.isDirectory())pending.push(resolve(entry.parentPath,entry.name));
+    }
+  }
   return actual;
 }
 export async function buildReleaseServer({root,staticDir,appOptions={}}){

@@ -6,6 +6,7 @@ import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypt
 import { openDb } from './db.mjs';
 import { registerCommerce } from './commerce.mjs';
 import { publicProduct, registerOperations } from './operations.mjs';
+import { registerIdentity } from './identity.mjs';
 
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const fail=(status,message)=>Object.assign(new Error(message),{statusCode:status});
@@ -44,7 +45,7 @@ export async function buildApp(options={}){
   async function auth(req){
     const token=req.headers.authorization?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
     const session=token&&db.prepare('SELECT user_id FROM sessions WHERE hash=? AND expires_at>?').get(sha(token),now());
-    if(!session)throw fail(401,'请先登录，或重新进入演示体验');
+    if(!session)throw fail(401,'请先登录，或重新进入体验');
     req.uid=session.user_id;
   }
   async function admin(req){
@@ -58,10 +59,11 @@ export async function buildApp(options={}){
   }
   function profile(uid){
     const u=db.prepare('SELECT id,name,points,created_at FROM users WHERE id=?').get(uid);
+    const account=db.prepare('SELECT username FROM accounts WHERE user_id=?').get(uid);
     const days=db.prepare('SELECT day FROM checkins WHERE user_id=? ORDER BY day DESC').all(uid).map(x=>x.day);
     let streak=0;let t=now();if(days[0]!==dayKey(t))t-=86400000;
     while(days.includes(dayKey(t))){streak++;t-=86400000;}
-    return {...u,pendingPoints:db.prepare("SELECT COALESCE(SUM(reward),0) AS n FROM shop_orders WHERE user_id=? AND status IN ('paid','shipped')").get(uid).n,checkedIn:days.includes(dayKey(now())),streak,adCount:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id=? AND day=? AND claimed=1').get(uid,dayKey(now())).n,adLimit:5};
+    return {...u,username:account?.username??null,hasPassword:Boolean(account),pendingPoints:db.prepare("SELECT COALESCE(SUM(reward),0) AS n FROM shop_orders WHERE user_id=? AND status IN ('paid','shipped')").get(uid).n,checkedIn:days.includes(dayKey(now())),streak,adCount:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id=? AND day=? AND claimed=1').get(uid,dayKey(now())).n,adLimit:5};
   }
   app.get('/api/health',async()=>({ok:true,mode,integrations:{ads:'demo',risk:'local-rules',payment:'disabled',wechat:'not-configured'}}));
   app.get('/api/catalog',async()=>({products:db.prepare('SELECT * FROM products WHERE enabled=1').all().map(p=>publicProduct(p,db)),placements:db.prepare('SELECT * FROM placements WHERE enabled=1').all(),adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true'}));
@@ -128,7 +130,7 @@ export async function buildApp(options={}){
     });
     reply.code(201);return {order,user:profile(req.uid)};
   });
-  app.get('/api/orders',{preHandler:auth},async req=>({items:db.prepare('SELECT id,product_id,name,points,status,created_at FROM orders WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(req.uid)}));
+  app.get('/api/orders',{preHandler:auth},async req=>({items:db.prepare('SELECT o.id,o.product_id,o.name,o.points,o.status,o.created_at,f.note AS fulfillment_note,f.created_at AS fulfilled_at FROM orders o LEFT JOIN redemption_fulfillments f ON f.order_id=o.id WHERE o.user_id=? ORDER BY o.created_at DESC LIMIT 100').all(req.uid).map(({fulfillment_note,fulfilled_at,...order})=>({...order,fulfillment:fulfilled_at===null?null:{note:fulfillment_note,created_at:fulfilled_at}}))}));
   app.get('/api/admin/overview',{preHandler:admin},async()=>({
     mode,stats:{users:db.prepare('SELECT COUNT(*) AS n FROM users').get().n,orders:db.prepare('SELECT (SELECT COUNT(*) FROM orders)+(SELECT COUNT(*) FROM shop_orders) AS n').get().n,issued:db.prepare('SELECT COALESCE(SUM(delta),0) AS n FROM ledger WHERE delta>0').get().n,adViews:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE claimed=1').get().n},
     adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true',
@@ -152,6 +154,7 @@ export async function buildApp(options={}){
     else db.prepare('DELETE FROM blocked_users WHERE user_id=?').run(req.body.userId);
     db.prepare('INSERT INTO audit VALUES(?,?,?,?)').run(randomUUID(),'account.restrict',JSON.stringify(req.body),now());return {ok:true};
   }));
+  registerIdentity({app,db,now,auth,tx,profile,mode});
   registerCommerce({app,db,now,auth,admin,tx,ledger,allowReward,profile});
   registerOperations({app,db,admin,tx,now});
   return app;

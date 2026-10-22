@@ -39,6 +39,16 @@ export function openDb(path){
   CREATE TABLE IF NOT EXISTS shipments(order_id TEXT PRIMARY KEY REFERENCES shop_orders(id),carrier TEXT NOT NULL,tracking TEXT NOT NULL,created_at INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS after_sales(id TEXT PRIMARY KEY,order_id TEXT NOT NULL UNIQUE REFERENCES shop_orders(id),user_id TEXT NOT NULL REFERENCES users(id),status TEXT NOT NULL,reason TEXT NOT NULL,resolution TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,resolved_at INTEGER);
   CREATE INDEX IF NOT EXISTS shop_user_time ON shop_orders(user_id,created_at);`);
+  // Separate identity rows leave legacy demonstration users and their balances intact.
+  db.exec(`CREATE TABLE IF NOT EXISTS accounts(
+    user_id TEXT PRIMARY KEY REFERENCES users(id),
+    username TEXT NOT NULL UNIQUE CHECK(username=lower(username)),
+    password_salt TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    failed_attempts INTEGER NOT NULL DEFAULT 0,
+    locked_until INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL
+  );`);
   // Additive migrations preserve existing merchant rows and customer history.
   const columns=new Set(db.prepare('PRAGMA table_info(products)').all().map(column=>column.name));
   if(!columns.has('enabled'))db.exec('ALTER TABLE products ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1))');

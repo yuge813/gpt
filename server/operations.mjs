@@ -18,6 +18,34 @@ export function publicProduct(product,db){
 
 export function registerOperations({app,db,admin,tx,now}){
   const audit=(action,detail)=>db.prepare('INSERT INTO audit VALUES(?,?,?,?)').run(randomUUID(),action,JSON.stringify(detail),now());
+  // Fulfillment notes are independent from the original redemption accounting.
+  // Creating this table is additive; no legacy order or balance is rewritten.
+  db.exec('CREATE TABLE IF NOT EXISTS redemption_fulfillments(order_id TEXT PRIMARY KEY REFERENCES orders(id),note TEXT NOT NULL,created_at INTEGER NOT NULL)');
+  const redemption=order=>{
+    const record=db.prepare('SELECT note,created_at FROM redemption_fulfillments WHERE order_id=?').get(order.id);
+    return {...order,fulfillment:record||null};
+  };
+  app.get('/api/admin/redemptions',{preHandler:admin},async()=>({items:db.prepare('SELECT id,user_id,product_id,name,points,status,created_at FROM orders ORDER BY created_at DESC,rowid DESC LIMIT 200').all().map(redemption)}));
+  app.post('/api/admin/redemptions/:id/fulfill',{
+    preHandler:admin,
+    schema:{params:schema({id:{type:'string',format:'uuid'}}),body:schema({note:{type:'string',minLength:3,maxLength:300}})}
+  },async req=>tx(()=>{
+    const note=req.body.note.trim();
+    if(note.length<3)throw fail(400,'处理说明去除空白后至少需要 3 个字符');
+    const order=db.prepare('SELECT id,user_id,product_id,name,points,status,created_at FROM orders WHERE id=?').get(req.params.id);
+    if(!order)throw fail(404,'积分兑换记录不存在');
+    if(order.product_id==='coupon')throw fail(409,'购物券在兑换时自动发放，不能重复人工处理');
+    if(order.status!=='demo_reserved')throw fail(409,'当前兑换状态不支持登记处理');
+    const previous=db.prepare('SELECT note,created_at FROM redemption_fulfillments WHERE order_id=?').get(order.id);
+    if(previous){
+      if(previous.note!==note)throw fail(409,'兑换记录已处理，不能覆盖原说明');
+      return {order:redemption(order),replayed:true};
+    }
+    db.prepare('INSERT INTO redemption_fulfillments(order_id,note,created_at) VALUES(?,?,?)').run(order.id,note,now());
+    audit('redemption.fulfill',{orderId:order.id});
+    return {order:redemption(order),replayed:false};
+  }));
+
   app.get('/api/admin/shop-orders/export.csv',{
     preHandler:admin,
     schema:{querystring:{type:'object',additionalProperties:false,properties:{

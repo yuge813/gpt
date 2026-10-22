@@ -1,0 +1,32 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { resolve } from 'node:path';
+import { buildApp } from '../server/app.mjs';
+import { backupDatabase } from './backup.mjs';
+import { restoreDatabase } from './restore.mjs';
+
+test('application recovery preserves password identity, points and cart in an independent database',async t=>{
+ const dir=mkdtempSync(resolve(tmpdir(),'aurora-app-recovery-'));
+ let original,recovered;
+ t.after(async()=>{await recovered?.close();await original?.close();rmSync(dir,{recursive:true,force:true});});
+ const source=resolve(dir,'original.sqlite'),snapshot=resolve(dir,'backup.sqlite'),target=resolve(dir,'recovered.sqlite');
+ original=await buildApp({dbPath:source});
+ const registered=await original.inject({method:'POST',url:'/api/auth/register',payload:{username:'recovery_member',password:'test-only-recovery-password-74',consent:true}});
+ assert.equal(registered.statusCode,201);
+ const headers={authorization:`Bearer ${registered.json().token}`};
+ assert.equal((await original.inject({method:'POST',url:'/api/checkin',headers,payload:{}})).statusCode,200);
+ assert.equal((await original.inject({method:'POST',url:'/api/cart',headers,payload:{productId:'cup',quantity:1}})).statusCode,200);
+ await backupDatabase(source,snapshot);
+ await restoreDatabase(snapshot,target);
+ recovered=await buildApp({dbPath:target});
+ const login=await recovered.inject({method:'POST',url:'/api/auth/login',payload:{username:'RECOVERY_MEMBER',password:'test-only-recovery-password-74'}});
+ assert.equal(login.statusCode,200);assert.equal(login.json().user.points,20);
+ const restoredHeaders={authorization:`Bearer ${login.json().token}`};
+ assert.equal((await recovered.inject({url:'/api/cart',headers:restoredHeaders})).json().items[0].quantity,1);
+ assert.equal((await recovered.inject({url:'/api/ledger',headers:restoredHeaders})).json().items.length,1);
+ await recovered.inject({method:'POST',url:'/api/cart',headers:restoredHeaders,payload:{productId:'cup',quantity:2}});
+ assert.equal((await original.inject({url:'/api/cart',headers})).json().items[0].quantity,1);
+ await assert.rejects(()=>restoreDatabase(snapshot,target),/不会覆盖/);
+});

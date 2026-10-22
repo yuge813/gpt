@@ -18,3 +18,11 @@ test('release serving refuses source root and escaping directory symlinks',t=>{
   writeFileSync(resolve(root,'index.html'),'source');writeFileSync(resolve(root,'package.json'),'{}');assert.throws(()=>frontendDirectory(root,'.'),/不能暴露/);
   writeFileSync(resolve(outside,'index.html'),'outside');symlinkSync(outside,resolve(root,'public'),process.platform==='win32'?'junction':'dir');assert.throws(()=>frontendDirectory(root,'public'),/不能暴露/);
 });
+
+test('release serving rejects nested file symlinks before they can expose private data',t=>{
+  const root=mkdtempSync(resolve(tmpdir(),'aurora-linked-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+  mkdirSync(resolve(root,'public/assets'),{recursive:true});
+  writeFileSync(resolve(root,'public/index.html'),'built');writeFileSync(resolve(root,'.env'),'PRIVATE_FIXTURE');
+  symlinkSync(resolve(root,'.env'),resolve(root,'public/assets/disguised.txt'));
+  assert.throws(()=>frontendDirectory(root),/符号链接/);
+});

@@ -122,6 +122,7 @@
         "fast-glob"
       ],
       "effects": [
+        "@dcloudio/uni-app",
         "@dcloudio/uni-components"
       ],
       "range": "*",
@@ -156,16 +157,12 @@
       "via": [
         "@dcloudio/uni-cli-shared"
       ],
-      "effects": [
-        "@dcloudio/uni-app"
-      ],
+      "effects": [],
       "range": "*",
       "nodes": [
         "node_modules/@dcloudio/uni-console"
       ],
-      "fixAvailable": {
-        "isSemVerMajor": true
-      }
+      "fixAvailable": true
     },
     "@dcloudio/uni-h5": {
       "name": "@dcloudio/uni-h5",

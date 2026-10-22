@@ -14,3 +14,5 @@
 @media(prefers-reduced-motion:reduce){.ops *{transition:none!important;animation:none!important}}
 
 .ops-export-bar{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:22px;padding:18px;background:#fff;border:1px solid #e8ecf2;border-radius:10px}.ops-export-bar .ops-button{flex-shrink:0}@media(max-width:680px){.ops-export-bar{align-items:flex-start;flex-direction:column;gap:12px}}
+
+.ops-redemption .ops-muted{overflow-wrap:anywhere}.ops-redemption .ops-review-resolution{white-space:pre-wrap;overflow-wrap:anywhere}

@@ -35,11 +35,11 @@ for path in sorted((root / 'server').glob('*.mjs')):
         (bundle / 'server').mkdir(exist_ok=True)
         shutil.copy2(path, bundle / 'server' / path.name)
 (bundle / 'scripts').mkdir()
-for name in ('serve.mjs', 'runtime.mjs', 'backup.mjs', 'doctor.mjs'):
+for name in ('serve.mjs', 'runtime.mjs', 'backup.mjs', 'doctor.mjs', 'restore.mjs'):
     shutil.copy2(root / 'scripts' / name, bundle / 'scripts' / name)
 shutil.copytree(build, bundle / 'public')
 (bundle / 'docs').mkdir()
-for name in ('BAOTA.md', 'WINDOWS.md', 'ACCEPTANCE.md', 'SECURITY.md', 'ASSETS.md', 'DELIVERY-STATUS.md'):
+for name in ('BAOTA.md', 'WINDOWS.md', 'ACCEPTANCE.md', 'SECURITY.md', 'ASSETS.md', 'DELIVERY-STATUS.md', 'RESTORE.md', 'REFERENCE-COMPARISON.md', 'API.md'):
     shutil.copy2(root / 'docs' / name, bundle / 'docs' / name)
 (bundle / 'README.md').write_text(f'''# 曜集 {version} · 预构建测试服务包
 
@@ -68,9 +68,11 @@ npm start
 首次启动会创建 .env 并生成随机后台 ADMIN_TOKEN，不会打印凭证或覆盖旧配置。
 后台入口在网站页脚及个人中心；请在本机安全查看 .env 使用运营凭证，不要公开或发送给他人。
 检查环境：npm run doctor。数据库一致性备份：npm run backup。
+恢复到全新独立文件：参见 docs/RESTORE.md；不会自动切换运行数据。
 升级前备份并保留自己的 .env、.data；不要复制旧 node_modules 或覆盖生产数据。
 
-已包含商品、库存、订单、商家发货记录、售后审核和积分规则管理。
+已包含账号密码注册/登录/改密、商品库存、订单、商家发货记录、售后审核、积分规则与兑换处理记录。
+匿名体验与注册账号不自动合并；没有密码找回功能，请妥善保管账号和密码。
 仍为测试环境：不真实收款、退款、发货或展示广告；不代表完成四端真机与平台审核。
 业务数据与个人信息保护仍不满足生产门槛。商品图片为示意图，非品牌授权证明。
 ''', encoding='utf-8')

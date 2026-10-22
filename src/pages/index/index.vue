@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { request, idempotencyKey } from '../../lib/api'
 import { money, photo, orderStatus, afterSaleStatus, type ShopProduct } from '../../lib/shop'
 import ShopProductCard from '../../components/ShopProduct.vue'
 import AdPlacement from '../../components/AdPlacement.vue'
 
 const nav=[{id:'home',label:'商城首页',short:'首页',icon:'⌂'},{id:'category',label:'商品分类',short:'分类',icon:'▦'},{id:'points',label:'积分商城',short:'积分',icon:'◇'},{id:'cart',label:'购物车',short:'购物车',icon:'▱'},{id:'mine',label:'我的商城',short:'我的',icon:'♙'}]
-const active=ref('home'),catalog=ref<ShopProduct[]>([]),user=ref<any>(null),cart=ref<any[]>([]),addresses=ref<any[]>([]),orders=ref<any[]>([]),coupons=ref<any[]>([]),ledger=ref<any[]>([])
+const active=ref('home'),catalog=ref<ShopProduct[]>([]),user=ref<any>(null),cart=ref<any[]>([]),addresses=ref<any[]>([]),orders=ref<any[]>([]),coupons=ref<any[]>([]),ledger=ref<any[]>([]),redemptions=ref<any[]>([])
 const loading=ref(true),error=ref(''),busy=ref(false),message=ref(''),query=ref(''),category=ref('全部'),sort=ref('综合'),modal=ref(''),consent=ref(false),selected=ref<ShopProduct|null>(null)
 const checkoutItems=ref<any[]>([]),addressId=ref(''),couponId=ref(''),checkoutKey=ref(''),payOrder=ref<any>(null),orderFilter=ref('全部'),orderQuery=ref(''),infoTitle=ref(''),infoBody=ref('')
 const recipient=ref(''),phone=ref(''),detail=ref(''),adsEnabled=ref(true),placements=ref<any[]>([]),ad=ref<any>(null),seconds=ref(0),purchaseRate=ref(1),afterSaleReason=ref(''),accountSyncError=ref(''),infoReturnModal=ref('')
+const authMode=ref<'demo'|'login'|'register'>('demo'),username=ref(''),password=ref(''),passwordConfirm=ref(''),authError=ref(''),currentPassword=ref(''),newPassword=ref(''),newPasswordConfirm=ref('')
 const favorites=ref<string[]>(uni.getStorageSync('aurora-favorites')||[])
 let noticeTimer:ReturnType<typeof setTimeout>|undefined,adTimer:ReturnType<typeof setInterval>|undefined,afterLogin:(()=>void|Promise<void>)|null=null,refreshVersion=0
 const categories=['全部','数码好物','生活美学','出行装备']
@@ -45,7 +46,7 @@ async function act(fn:()=>Promise<void>){if(busy.value)return;busy.value=true;tr
 function info(title:string,body:string){infoReturnModal.value=modal.value==='login'?'login':'';infoTitle.value=title;infoBody.value=body;modal.value='info'}
 function go(id:string){active.value=id;query.value='';category.value='全部';sort.value='综合';uni.pageScrollTo({scrollTop:0,duration:120});if(id==='checkout'&&!checkoutItems.value.length)active.value='cart'}
 function logged(resume?:()=>void|Promise<void>){if(user.value)return true;afterLogin=resume||null;modal.value='login';return false}
-function resetAccount(){user.value=null;cart.value=[];orders.value=[];ledger.value=[];addresses.value=[];coupons.value=[];addressId.value='';couponId.value='';accountSyncError.value='';orderQuery.value=''}
+function resetAccount(){user.value=null;cart.value=[];orders.value=[];ledger.value=[];redemptions.value=[];addresses.value=[];coupons.value=[];addressId.value='';couponId.value='';accountSyncError.value='';orderQuery.value=''}
 async function refresh(){
  const version=++refreshVersion,token=uni.getStorageSync('aurora-token')
  const [c,r]=await Promise.all([request('/catalog'),request('/points-rules')])
@@ -56,9 +57,9 @@ async function refresh(){
    const me=await request('/me')
    if(version!==refreshVersion||uni.getStorageSync('aurora-token')!==token)return
    user.value=me
-   const results=await Promise.allSettled([request('/cart'),request('/addresses'),request('/shop/orders'),request('/coupons'),request('/ledger')])
+   const results=await Promise.allSettled([request('/cart'),request('/addresses'),request('/shop/orders'),request('/coupons'),request('/ledger'),request('/orders')])
    if(version!==refreshVersion||uni.getStorageSync('aurora-token')!==token)return
-   const targets=[cart,addresses,orders,coupons,ledger]
+   const targets=[cart,addresses,orders,coupons,ledger,redemptions]
    results.forEach((result,i)=>{if(result.status==='fulfilled')targets[i].value=result.value.items})
    if(!addresses.value.some(a=>a.id===addressId.value))addressId.value=addresses.value[0]?.id||''
    if(couponId.value&&!coupons.value.some(c=>c.id===couponId.value&&c.status==='available'))couponId.value=''
@@ -74,7 +75,52 @@ async function login(){
  await act(async()=>{const r=await request('/auth/demo','POST',{consent:true});uni.setStorageSync('aurora-token',r.token);user.value=r.user;modal.value='';success=true;await syncSuccess('登录成功，购物积分按订单规则入账')})
  if(success&&afterLogin){const resume=afterLogin;afterLogin=null;await resume()}
 }
-async function logout(){await act(async()=>{await request('/auth/logout','POST',{});uni.removeStorageSync('aurora-token');refreshVersion++;afterLogin=null;resetAccount();checkoutItems.value=[];go('home');tell('已退出登录')})}
+function clearCredentials(){password.value='';passwordConfirm.value='';currentPassword.value='';newPassword.value='';newPasswordConfirm.value=''}
+function switchAuthMode(mode:'demo'|'login'|'register'){authMode.value=mode;clearCredentials();authError.value=''}
+function validPassword(value:string){return value.length>=12&&value.length<=128}
+async function accountLogin(){
+ authError.value=''
+ const name=username.value.trim()
+ if(!/^[A-Za-z0-9_]{3,32}$/.test(name)){authError.value='账号需为 3–32 位英文字母、数字或下划线';return}
+ if(!validPassword(password.value)){authError.value='密码需为 12–128 个字符';return}
+ if(authMode.value==='register'&&password.value!==passwordConfirm.value){authError.value='两次输入的密码不一致';return}
+ if(authMode.value==='register'&&!consent.value){authError.value='请先阅读并同意体验与隐私说明';return}
+ let success=false
+ await act(async()=>{
+  try{
+   const registering=authMode.value==='register'
+   const data:Record<string,unknown>={username:name,password:password.value}
+   if(registering)data.consent=true
+   const r=await request(registering?'/auth/register':'/auth/login','POST',data)
+   uni.setStorageSync('aurora-token',r.token);refreshVersion++;resetAccount();user.value=r.user;clearCredentials();modal.value='';success=true
+   await syncSuccess(registering?'账号已创建，请妥善保管账号和密码':'账号登录成功')
+  }catch(e:any){authError.value=e.message||'账号操作失败，请稍后重试'}
+ })
+ if(success&&afterLogin){const resume=afterLogin;afterLogin=null;await resume()}
+}
+function showRedemptions(){if(!logged(()=>showRedemptions()))return;go('redemptions');void refresh().catch(()=>tell('兑换记录刷新失败，请稍后刷新重试'))}
+function openPassword(){clearCredentials();authError.value='';modal.value='password'}
+async function changePassword(){
+ authError.value=''
+ if(!validPassword(currentPassword.value)||!validPassword(newPassword.value)){authError.value='原密码和新密码均需为 12–128 个字符';return}
+ if(newPassword.value!==newPasswordConfirm.value){authError.value='两次输入的新密码不一致';return}
+ if(currentPassword.value===newPassword.value){authError.value='新密码应与原密码不同';return}
+ await act(async()=>{
+  try{
+   const r=await request('/auth/password','POST',{currentPassword:currentPassword.value,newPassword:newPassword.value})
+   uni.setStorageSync('aurora-token',r.token);refreshVersion++;user.value=r.user;clearCredentials();modal.value=''
+   await syncSuccess('密码已修改，其他旧会话已失效')
+  }catch(e:any){authError.value=e.message||'修改失败，请稍后重试'}
+ })
+}
+async function logout(){await act(async()=>{
+ let revoked=true
+ try{await request('/auth/logout','POST',{})}catch{revoked=false}
+ uni.removeStorageSync('aurora-token');refreshVersion++;afterLogin=null;resetAccount();checkoutItems.value=[];clearCredentials();username.value='';authMode.value='demo';go('home')
+ tell(revoked?'已退出登录':'本机已退出；网络异常，服务端会话可能仍有效')
+})}
+watch(modal,(value,previous)=>{if(value!==previous){authError.value='';if(value!=='login'&&value!=='password')clearCredentials()}})
+
 function openProduct(p:ShopProduct){selected.value=p;modal.value='product'}
 async function addCart(p:ShopProduct){if(!logged(()=>addCart(p)))return;if(unavailable(p)){tell('商品已下架或库存不足');return}await act(async()=>{const quantity=(cart.value.find(c=>c.id===p.id)?.quantity||0)+1;await request('/cart','POST',{productId:p.id,quantity});modal.value='';await syncSuccess('已加入购物车')})}
 async function changeQty(p:any,delta:number){if(p.quantity+delta<1||unavailable(p))return;await act(async()=>{await request('/cart','POST',{productId:p.id,quantity:p.quantity+delta});await syncSuccess('购物车数量已更新')})}
@@ -108,7 +154,7 @@ function close(){if(modal.value==='info'&&infoReturnModal.value){modal.value=inf
 function favorite(p:ShopProduct){favorites.value=favorites.value.includes(p.id)?favorites.value.filter(id=>id!==p.id):[...favorites.value,p.id];uni.setStorageSync('aurora-favorites',favorites.value);tell(favorites.value.includes(p.id)?'已收藏':'已取消收藏')}
 function showOrders(filter='全部'){if(!logged(()=>showOrders(filter)))return;orderFilter.value=filter;orderQuery.value='';go('orders');void refresh().catch(()=>tell('订单刷新失败，请稍后点击刷新重试'))}
 function rules(){info('购物积分规则',`当前购物奖励：${rateDescription.value}，按优惠后实付金额计算并向下取整。结算页为当前规则预估，实际以创建订单时服务端记录的积分为准，后续规则调整不修改已有订单。付款后积分待入账，商家登记发货并确认收货后到账。取消订单不发积分；售后需商家审核，批准退款会回收已发购物积分。已使用返还积分导致余额不足时，需继续人工处理，不会自动制造负积分。签到和广告仅为补充任务。积分不出售、不提现、不转让，不参与随机抽奖。当前全部为测试交易，不扣款、不真实发货。`)}
-function privacy(){info('隐私与体验说明','本测试版保存随机账户、登录会话、地址、购物车、订单、售后原因、商家手工登记的运单信息、积分、优惠券和安全操作记录。请只填写虚构的收货信息，不输入真实隐私；售后原因中不要填写身份证、银行卡或密码。心愿单保存在本设备。未接入支付、物流、广告或数美 SDK，不向这些平台发送数据。运单是商家录入记录，不是物流平台实时追踪。正式运营前需补充运营主体、数据保留与删除、注销和申诉等完整政策。')}
+function privacy(){info('隐私与体验说明','本测试版保存随机体验账户或注册账号、密码安全摘要、登录会话、地址、购物车、订单、售后原因、商家手工登记的运单信息、积分、优惠券和安全操作记录。请只填写虚构的收货信息，不输入真实隐私；售后原因中不要填写身份证、银行卡或密码。心愿单保存在本设备。未接入支付、物流、广告或数美 SDK，不向这些平台发送数据。运单是商家录入记录，不是物流平台实时追踪。正式运营前需补充运营主体、数据保留与删除、注销和申诉等完整政策。')}
 function admin(){uni.navigateTo({url:'/pages/admin/index'})}
 const date=(n:number)=>new Date(n).toLocaleString('zh-CN',{hour12:false})
 onMounted(load)
@@ -119,7 +165,7 @@ onUnmounted(()=>{refreshVersion++;if(noticeTimer)clearTimeout(noticeTimer);if(ad
  <view class="mall">
   <view class="m-topline"><view class="m-width"><text>好物认真选 · 购物有积分</text><view><text class="m-test-badge">测试商城 · 不真实扣款</text><text @click="rules">积分规则</text><text @click="admin">商家后台 ↗</text></view></view></view>
   <view class="m-header"><view class="m-width m-header-inner"><view class="m-brand" @click="go('home')"><text class="m-brand-symbol">曜</text><view><text class="m-brand-title">曜集商城</text><text class="m-brand-sub">买好物 · 得积分 · 兑好礼</text></view></view><view class="m-search"><text>⌕</text><input v-model="query" placeholder="搜好物，看看能得多少积分" @confirm="active='category'"/><button role="button" @click="active='category'">搜索</button></view><view class="m-header-account" @click="user?go('mine'):modal='login'"><text class="m-account-icon">♙</text><view><text>{{user?'我的账户':'登录 / 注册'}}</text><text class="m-muted">{{user?`${pointBalance} 可用积分`:'开启购物积分体验'}}</text></view></view><view class="m-header-cart" @click="go('cart')">▱<text>购物车</text><text class="m-cart-badge">{{cartCount}}</text></view></view></view>
-  <view class="m-desktop-nav"><view class="m-width"><view v-for="n in nav" :key="n.id" :class="{on:active===n.id}" @click="go(n.id)">{{n.label}}</view><view :class="{on:active==='tasks'}" @click="go('tasks')">签到领积分</view><text class="m-nav-tip">购物返积分，确认收货后到账</text></view></view>
+  <view class="m-desktop-nav"><view class="m-width"><view v-for="n in nav" :key="n.id" role="button" :aria-label="n.label" :data-testid="'customer-nav-'+n.id" :class="{on:active===n.id}" @click="go(n.id)">{{n.label}}</view><view :class="{on:active==='tasks'}" @click="go('tasks')">签到领积分</view><text class="m-nav-tip">购物返积分，确认收货后到账</text></view></view>
   <view class="m-width m-main">
    <view v-if="loading" class="m-empty"><text class="m-empty-symbol">◌</text><text>正在准备你的购物首页…</text></view>
    <view v-else-if="error" class="m-empty"><text>商城服务暂时无法连接</text><text class="m-muted">{{error}}</text><button role="button" class="m-button" @click="load">重新连接</button></view>
@@ -157,7 +203,14 @@ onUnmounted(()=>{refreshVersion++;if(noticeTimer)clearTimeout(noticeTimer);if(ad
     </template>
 
     <template v-if="active==='mine'">
-     <view class="m-profile"><view class="m-profile-avatar">曜</view><view class="m-grow"><text class="m-page-title">{{user?'曜集会员':'欢迎来到曜集商城'}}</text><text class="m-muted">{{user?'购物积累，日常也有新期待':'登录后管理订单、收货地址和购物积分'}}</text></view><button role="button" class="m-button m-button-outline" @click="user?logout():modal='login'">{{user?'退出登录':'登录 / 注册'}}</button></view><view class="m-account-stats"><view @click="go('wallet')"><text>{{pointBalance}}</text><text>可用积分 →</text></view><view @click="showOrders()"><text>{{user?.pendingPoints||0}}</text><text>待入账积分 →</text></view><view @click="go('coupons')"><text>{{coupons.filter(c=>c.status==='available').length}}</text><text>可用优惠券 →</text></view><view @click="modal='favorites'"><text>{{favorites.length}}</text><text>我的收藏 →</text></view></view><view class="m-panel"><view class="m-section-heading"><text class="m-section-title">我的订单</text><text class="m-text-link" @click="showOrders()">全部订单 →</text></view><view class="m-order-shortcuts"><view v-for="(s,i) in ['待付款','待发货','待收货','已完成','已退款']" :key="s" @click="showOrders(s)"><text>{{['▤','▣','▱','✓','↶'][i]}}</text><text>{{s}}</text><text class="m-order-count">{{orders.filter(o=>orderStatus[o.status]===s).length}}</text></view></view></view><view class="m-personal-links"><view @click="logged()&&(modal='addresses')">收货地址 <text>›</text></view><view @click="go('coupons')">我的优惠券 <text>›</text></view><view @click="go('tasks')">签到与广告激励 <text>›</text></view><view @click="rules">购物积分规则 <text>›</text></view><view @click="privacy">隐私与体验说明 <text>›</text></view><view @click="admin">商家运营后台 <text>›</text></view></view>
+     <view class="m-profile"><view class="m-profile-avatar">曜</view><view class="m-grow"><text class="m-page-title">{{user?.username|| (user?'曜集会员':'欢迎来到曜集商城')}}</text><text class="m-muted">{{user?(user.hasPassword?'账号已保存，可使用账号密码再次登录':'匿名体验账户 · 退出后无法凭账号找回'):'登录后管理订单、收货地址和购物积分'}}</text></view><button role="button" class="m-button m-button-outline" @click="user?logout():modal='login'">{{user?'退出登录':'登录 / 注册'}}</button></view><view class="m-account-stats"><view @click="go('wallet')"><text>{{pointBalance}}</text><text>可用积分 →</text></view><view @click="showOrders()"><text>{{user?.pendingPoints||0}}</text><text>待入账积分 →</text></view><view @click="go('coupons')"><text>{{coupons.filter(c=>c.status==='available').length}}</text><text>可用优惠券 →</text></view><view @click="modal='favorites'"><text>{{favorites.length}}</text><text>我的收藏 →</text></view></view><view class="m-panel"><view class="m-section-heading"><text class="m-section-title">我的订单</text><text class="m-text-link" @click="showOrders()">全部订单 →</text></view><view class="m-order-shortcuts"><view v-for="(s,i) in ['待付款','待发货','待收货','已完成','已退款']" :key="s" @click="showOrders(s)"><text>{{['▤','▣','▱','✓','↶'][i]}}</text><text>{{s}}</text><text class="m-order-count">{{orders.filter(o=>orderStatus[o.status]===s).length}}</text></view></view></view><view class="m-personal-links"><view data-testid="account-redemptions-entry" @click="showRedemptions">积分兑换记录 <text>›</text></view><view v-if="user?.hasPassword" data-testid="account-password-entry" @click="openPassword">修改登录密码 <text>›</text></view><view @click="logged()&&(modal='addresses')">收货地址 <text>›</text></view><view @click="go('coupons')">我的优惠券 <text>›</text></view><view @click="go('tasks')">签到与广告激励 <text>›</text></view><view @click="rules">购物积分规则 <text>›</text></view><view @click="privacy">隐私与体验说明 <text>›</text></view><view @click="admin">商家运营后台 <text>›</text></view></view>
+    </template>
+
+    <template v-if="active==='redemptions'">
+     <view class="m-section-heading"><text class="m-page-title">积分兑换记录</text><button role="button" class="m-button m-button-outline" :disabled="busy" @click="act(refresh)">刷新兑换记录</button></view>
+     <view class="m-note">购物券兑换后自动放入“我的优惠券”。实物兑换仅记录测试申请，由商家登记处理说明，不代表真实发货或物流跟踪。</view>
+     <view v-if="!redemptions.length" class="m-empty m-white"><text>还没有积分兑换记录</text><text class="m-muted">积分兑换购物券或好礼后，可在这里查看处理状态。</text><button role="button" class="m-button" @click="go('points')">去积分商城</button></view>
+     <view v-for="r in redemptions" :key="r.id" class="m-redemption-card" :data-redemption-id="r.id"><view class="m-redemption-heading"><view><text class="m-item-title">{{r.name}}</text><text class="m-muted">{{date(r.created_at)}}</text></view><text class="m-mini-badge">{{r.product_id==='coupon'?'已发放购物券':r.fulfillment?'商家已记录处理':'待商家处理'}}</text></view><view class="m-redemption-points">支出 {{r.points}} 积分</view><view v-if="r.fulfillment" class="m-redemption-note"><text>商家处理说明</text><text>{{r.fulfillment.note}}</text><text class="m-muted">{{date(r.fulfillment.created_at)}} · 测试处理记录，非真实物流</text></view><view v-else-if="r.product_id==='coupon'" class="m-redemption-note"><text>已发放至该账号的优惠券，请查看门槛、有效期和使用状态。</text><button role="button" class="m-button m-button-outline" @click="go('coupons')">查看我的优惠券</button></view><view v-else class="m-redemption-note"><text>商家尚未登记处理结果，请稍后刷新查看。</text></view></view>
     </template>
 
     <template v-if="active==='wallet'">
@@ -175,10 +228,19 @@ onUnmounted(()=>{refreshVersion++;if(noticeTimer)clearTimeout(noticeTimer);if(ad
     <view class="m-footer"><view><text>曜集商城</text><text>买好物 · 得积分 · 兑好礼</text></view><view><text @click="rules">积分规则</text><text @click="privacy">隐私说明</text><text @click="admin">商家后台</text></view><text>测试版 · 商品图片仅作展示 · 不产生真实交易</text></view>
    </template>
   </view>
-  <view class="m-mobile-nav"><view v-for="n in nav" :key="n.id" :class="{on:active===n.id}" @click="go(n.id)"><view><text>{{n.icon}}</text><text v-if="n.id==='cart'&&cartCount" class="m-cart-badge">{{cartCount}}</text></view><text>{{n.short}}</text></view></view>
+  <view class="m-mobile-nav"><view v-for="n in nav" :key="n.id" role="button" :aria-label="n.label" :data-testid="'customer-nav-'+n.id" :class="{on:active===n.id}" @click="go(n.id)"><view><text>{{n.icon}}</text><text v-if="n.id==='cart'&&cartCount" class="m-cart-badge">{{cartCount}}</text></view><text>{{n.short}}</text></view></view>
 
   <view v-if="modal" class="m-modal-mask" @click="close"><view class="m-modal" :class="{'m-detail-modal':modal==='product'}" @click.stop><view class="m-modal-close" role="button" aria-label="关闭弹窗" @click="close">×</view>
-   <template v-if="modal==='login'"><view class="m-login-mark">曜</view><text class="m-eyebrow">WELCOME TO YAOJI</text><text class="m-modal-title">开启你的购物积分账户</text><text class="m-modal-desc">{{rateDescription}}，购物积分在确认收货后入账。积分可兑换购物券及好礼，账户初始积分为 0。</text><view class="m-consent" @click="consent=!consent"><text class="m-check" :class="{on:consent}">{{consent?'✓':''}}</text><text>我同意本商城为测试版，不真实扣款或发货，并已阅读</text><text class="m-orange" @click.stop="privacy">隐私说明</text></view><button role="button" class="m-button m-wide" :disabled="busy" @click="login">同意并登录体验</button></template>
+   <template v-if="modal==='login'">
+    <view class="m-login-mark">曜</view><text class="m-eyebrow">WELCOME TO YAOJI</text><text class="m-modal-title">开启你的购物积分账户</text>
+    <view class="m-auth-tabs"><button v-for="tab in [{id:'demo',label:'匿名体验'},{id:'login',label:'账号登录'},{id:'register',label:'注册账号'}]" :key="tab.id" role="button" :data-testid="'account-tab-'+tab.id" :class="{on:authMode===tab.id}" :disabled="busy" @click="switchAuthMode(tab.id as 'demo'|'login'|'register')">{{tab.label}}</button></view>
+    <text v-if="authMode==='demo'" class="m-modal-desc">{{rateDescription}}，购物积分在确认收货后入账。账户初始积分为 0。匿名体验退出后无法凭账号找回；如需再次登录同一账户，请选择注册账号。</text>
+    <template v-else><text class="m-modal-desc">{{authMode==='register'?'创建账号后，可用账号密码再次登录；新账号积分从 0 开始，不合并匿名体验数据。':'使用已有账号登录，继续查看该账号的订单、优惠券和积分。'}}</text><view class="m-form m-auth-form"><text>账号</text><input v-model="username" data-testid="account-username" aria-label="账号" placeholder="3–32 位英文字母、数字或下划线" maxlength="32" :disabled="busy"/><text>密码</text><input v-model="password" data-testid="account-password" aria-label="密码" placeholder="12–128 个字符" :password="true" maxlength="128" :disabled="busy" @confirm="authMode==='login'&&accountLogin()"/><template v-if="authMode==='register'"><text>再次输入密码</text><input v-model="passwordConfirm" data-testid="account-password-confirm" aria-label="再次输入密码" placeholder="再次输入密码" :password="true" maxlength="128" :disabled="busy" @confirm="accountLogin"/></template></view><text class="m-auth-safety">暂不提供密码找回，请妥善保管账号和密码。不要使用其他网站的密码。</text></template>
+    <view v-if="authMode!=='login'" class="m-consent" @click="!busy&&(consent=!consent)"><text class="m-check" :class="{on:consent}">{{consent?'✓':''}}</text><text>我同意本商城为测试版，不真实扣款或发货，并已阅读</text><text class="m-orange" @click.stop="privacy">隐私说明</text></view>
+    <text v-if="authError" class="m-auth-error" role="alert">{{authError}}</text>
+    <button v-if="authMode==='demo'" role="button" class="m-button m-wide" :disabled="busy" @click="login">同意并登录体验</button><button v-else role="button" class="m-button m-wide" data-testid="account-submit" :disabled="busy" @click="accountLogin">{{busy?'正在处理…':authMode==='register'?'同意并创建账号':'登录账号'}}</button>
+   </template>
+   <template v-else-if="modal==='password'"><text class="m-eyebrow">ACCOUNT SECURITY</text><text class="m-modal-title">修改登录密码</text><text class="m-modal-desc">账号 {{user?.username}}。修改成功后，其他设备和旧登录会话将失效，当前设备保留登录。</text><view class="m-form m-auth-form"><text>原密码</text><input v-model="currentPassword" data-testid="account-current-password" aria-label="原密码" placeholder="输入原密码" :password="true" maxlength="128" :disabled="busy"/><text>新密码</text><input v-model="newPassword" data-testid="account-new-password" aria-label="新密码" placeholder="12–128 个字符，与原密码不同" :password="true" maxlength="128" :disabled="busy"/><text>再次输入新密码</text><input v-model="newPasswordConfirm" data-testid="account-new-password-confirm" aria-label="再次输入新密码" placeholder="再次输入新密码" :password="true" maxlength="128" :disabled="busy" @confirm="changePassword"/></view><text class="m-auth-safety">暂不支持密码找回，请妥善保存新密码。</text><text v-if="authError" class="m-auth-error" role="alert">{{authError}}</text><button role="button" class="m-button m-wide" data-testid="account-password-save" :disabled="busy" @click="changePassword">{{busy?'正在处理…':'确认修改密码'}}</button></template>
    <template v-else-if="modal==='product'&&selected"><image class="m-detail-image" :src="photo(selected.art)" mode="aspectFill"/><view class="m-detail-content"><view class="m-detail-price"><text>¥{{money(selected.price)}}</text><text>确认收货返 {{selected.rewardPoints}} 积分</text></view><text class="m-modal-title">{{selected.name}}</text><text class="m-modal-desc">{{selected.subtitle}}</text><view class="m-detail-spec"><view><text>服务</text><text>测试包邮 · 库存 {{selected.stock}} 件</text></view><view><text>积分</text><text>{{rateDescription}}，以优惠后金额和订单记录为准</text></view><view><text>说明</text><text>图片为示意，不代表实际商品型号或品牌授权</text></view></view><view class="m-detail-actions"><button role="button" class="m-favorite-button" @click="favorite(selected)">{{favorites.includes(selected.id)?'♥ 已收藏':'♡ 收藏'}}</button><button role="button" class="m-button m-button-soft" :disabled="busy||unavailable(selected)" @click="addCart(selected)">加入购物车</button><button role="button" class="m-button" :disabled="unavailable(selected)" @click="openCheckout([selected])">立即购买</button></view></view></template>
    <template v-else-if="modal==='redeem'&&selected"><image class="m-redeem-image" :src="photo(selected.art)" mode="aspectFit"/><text class="m-modal-title">{{selected.name}}</text><view class="m-redeem-points">{{selected.points}}<text>积分兑换</text></view><text class="m-modal-desc">{{selected.id==='coupon'?'满 200 元减 20 元，有效期 30 天。兑换后在结算页选择使用。':'确定性积分兑换。当前仅记录兑换，不真实发货。'}}</text><text class="m-note">可用积分 {{pointBalance}}，不支持现金购买积分。</text><button role="button" class="m-button m-wide" :disabled="busy" @click="redeem">确认积分兑换</button></template>
    <template v-else-if="modal==='pay'&&payOrder"><text class="m-eyebrow">TEST CHECKOUT / 不实际扣款</text><text class="m-modal-title">测试收银台</text><text class="m-pay-amount">¥{{money(payOrder.amount)}}</text><text class="m-modal-desc">这是模拟支付，不会唤起微信或支付宝，不产生真实扣款。测试付款后等待商家在运营后台登记发货，再由你确认收货。</text><view class="m-payment-method"><text>◉</text><text>内部测试支付</text><text>非真实商户支付</text></view><button role="button" class="m-button m-wide" :disabled="busy" @click="pay">确认测试付款（不扣款）</button></template>

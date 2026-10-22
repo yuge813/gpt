@@ -1,4 +1,4 @@
-# 曜集商城 · 0.4.0 受控试用版
+# 曜集商城 · 0.5.0 受控试用版
 
 购物返积分商城，包含用户商城和独立商家运营后台。uni-app + Vue 3 共用客户端、Fastify + SQLite API。明亮移动商城界面，商品价格与返积分同屏展示。
 
@@ -6,7 +6,7 @@
 
 ## 最简单的运行方式：免前端编译部署包
 
-下载 `delivery/aurora-0.4.0-server.zip` 并解压。需要 Node.js 24+，已验证基线为 Node 24 LTS。
+下载 `delivery/aurora-0.5.0-server.zip` 并解压。需要 Node.js 24+，已验证基线为 Node 24 LTS。
 
 Windows 可直接双击解压目录的 `START-WINDOWS.cmd`，或在解压目录打开 PowerShell 执行：
 
@@ -39,6 +39,13 @@ PowerShell 使用 `npm.cmd` 替代 `npm`，不需要放宽系统执行策略。�
 可在 `.env` 设置 `PORT` 和 `FRONTEND_PORT`，Vite 代理随 API 端口调整。已有 `.env` 不会覆盖。不要一边运行 HBuilderX 一边重新安装依赖，也不要同时启动两份项目。
 
 ## 本版新增
+
+- 可重复登录的账号注册、登录、密码修改；随机盐 scrypt，失败锁定与限流，改密撤销旧会话。匿名体验保留，不自动合并账号。
+- 客户查询积分兑换记录，商家登记实物兑换处理说明，记录在客户页可见；不冒充真实物流。
+- 独立数据库恢复工具，完整性/外键检查，拒绝覆盖源文件或已有目标；操作步骤见 [恢复指南](docs/RESTORE.md)。
+- 静态目录中嵌套的文件符号链接也会被拒绝，避免构建目录暴露配置。
+
+前版已有：
 
 - Windows 双击启动脚本，自动进入正确目录，避免在用户目录执行 npm。
 - 客户订单按订单号、商品名搜索，结合订单状态筛选。
@@ -74,13 +81,14 @@ H5 输出 `dist/build/h5`，小程序输出 `dist/build/mp-weixin`，App 共用�
 
 ## 部署、升级及边界
 
+- [API 使用约定](docs/API.md)
 - [Windows / HBuilderX 指南](docs/WINDOWS.md)
 - [宝塔部署指南](docs/BAOTA.md)：包含访问范围限制，以及全站 Basic Auth 与 Bearer 会话冲突的修正。
 - [功能验收清单](docs/ACCEPTANCE.md) · [交付状态及上线条件](docs/DELIVERY-STATUS.md)
-- [四端和第三方服务边界](docs/PLATFORMS.md)
+- [四端和第三方服务边界](docs/PLATFORMS.md) · [参考介绍逐项核对](docs/REFERENCE-COMPARISON.md)
 - [安全状态](docs/SECURITY.md) · [素材说明](docs/ASSETS.md)
 - 最近验证证据：`docs/validation.json`；真实浏览器截图：`docs/screenshots/`。
 
 升级前备份并保留自己的 `.env`、`.data`。源码与部署包都有数据库增量迁移；不要只升级前端、不要复制旧 node_modules、不要在运行写入时复制单个 SQLite 数据库文件。不要把项目根目录作为 Nginx 网页根目录，也不要公开配置、数据库或备份。
 
-真实微信/支付宝支付与退款网关、穿山甲/微信广告、数美、生产账号认证、后台 MFA/RBAC、完整隐私/注销、实际物流与履约及平台审核仍未完成。正式模式拒绝启动。收费随机获奖机制未实现，需单独审查；积分不支持买卖、提现、转让或朋友圈分享奖励。
+真实微信/支付宝支付与退款网关、穿山甲/微信广告、数美、微信/短信等生产身份体系、后台 MFA/RBAC、完整隐私/注销、实际物流与履约及平台审核仍未完成。正式模式拒绝启动。收费随机获奖机制未实现，需单独审查；积分不支持买卖、提现、转让或朋友圈分享奖励。

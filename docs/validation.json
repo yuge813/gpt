@@ -1,16 +1,16 @@
 {
-  "verified_at": "2026-10-22T11:48:54.663365+00:00",
-  "version": "0.4.0",
-  "workflow": "controlled trial: customer shopping and receipt rewards with merchant products, shipping and after-sales",
+  "verified_at": "2026-10-22T12:42:41.170779+00:00",
+  "version": "0.5.0",
+  "workflow": "controlled trial: recoverable password accounts, shopping receipt rewards, merchant operations, redemption progress and independent recovery",
   "typecheck": "passed",
   "automated_tests": {
-    "passed": 31,
+    "passed": 47,
     "failed": 0,
     "skipped": 0,
-    "scope": "26 API/business tests + 5 startup/backup/static-serving tests"
+    "scope": "35 API/business tests + 12 startup/static/backup/recovery tests"
   },
   "browser_tests": {
-    "passed": 8,
+    "passed": 12,
     "failed": 0,
     "skipped": 0,
     "targets": [
@@ -29,8 +29,12 @@
       "search/details/favorites/privacy",
       "no page errors and no horizontal overflow in shopping/after-sale flows",
       "order search, empty results and reset on desktop/mobile",
-      "authenticated merchant CSV browser download on desktop/mobile"
-    ]
+      "authenticated merchant CSV browser download on desktop/mobile",
+      "registered account returns to same cart after logout/login",
+      "password rotation revokes other sessions and rejects old password",
+      "physical points redemption -> merchant handling UI -> customer-visible note"
+    ],
+    "isolation": "desktop and mobile use independent API processes, databases and rate-limit state"
   },
   "builds": {
     "h5": "passed",
@@ -43,7 +47,10 @@
     "sensitive_file_probe": "/.env rejected",
     "static_security_tests": "source root and escaping directory symlinks rejected",
     "backup": "consistent SQLite snapshot generated and integrity check passed",
-    "release_04_injection_smoke": "passed: prebuilt homepage, catalog, private-file denial and CSV authentication"
+    "release_04_injection_smoke": "passed: prebuilt homepage, catalog, private-file denial and CSV authentication",
+    "release_05_injection_smoke": "passed: prebuilt homepage, API, private-file denial, identity and redemption queries",
+    "recovery_rehearsal": "passed: live application database backup and independent restore preserves password login, points ledger and cart; original remains independent",
+    "archive": "50 files, manifest hashes checked, server sources identical, private data excluded"
   },
   "dependency_audit": {
     "info": 0,

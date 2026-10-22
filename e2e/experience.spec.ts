@@ -220,3 +220,37 @@ test('merchant changes are authenticated, reflected in catalog and protected aga
  await page.screenshot({path:`docs/screenshots/${info.project.name}-admin.png`,fullPage:true})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy()
 })
+
+test('physical points redemption has merchant handling and customer-visible progress',async({page},info)=>{
+ await page.goto('/');await login(page)
+ const token=await page.evaluate(()=>uni.getStorageSync('aurora-token'))
+ const headers={Authorization:`Bearer ${token}`}
+ async function userPost(path:string,data:unknown){
+  const r=await page.request.post('/api'+path,{headers,data});expect(r.status()).toBeLessThan(300);return r.json()
+ }
+ const address=await userPost('/addresses',{recipient:'兑换测试',phone:'13800000000',detail:'仅供测试的虚构收货地址'})
+ const placed=await userPost('/shop/checkout',{items:[{productId:'headphones',quantity:2}],addressId:address.id,couponId:'',requestKey:`redemption-${info.project.name}-${Date.now()}`})
+ await userPost(`/shop/orders/${placed.order.id}/demo-pay`,{})
+ await adminPost(page.request,`/admin/shop-orders/${placed.order.id}/ship`,{carrier:'测试履约',tracking:'TEST'+placed.order.number})
+ await userPost(`/shop/orders/${placed.order.id}/receive`,{})
+ await page.reload();await go(page,info.project.name==='mobile'?'积分':'积分商城')
+ await page.locator('.m-product').filter({hasText:'山野 · 日用陶瓷马克杯'}).click()
+ const redeemed=page.waitForResponse(r=>r.url().endsWith('/api/orders')&&r.request().method()==='POST')
+ await page.getByRole('button',{name:'确认积分兑换'}).click()
+ const response=await redeemed;expect(response.status()).toBe(201)
+ const redemption=(await response.json()).order
+ const merchant=await page.context().newPage()
+ try{
+  await merchantLogin(merchant);await merchant.getByTestId('ops-nav-redemptions').click()
+  await merchant.locator(`[data-redemption-id="${redemption.id}"]`).getByTestId('ops-redemption-fulfill').click()
+  await merchant.getByTestId('ops-redemption-note').locator('textarea').fill('测试兑换已核对，请等待测试履约；非真实物流通知')
+  const handled=merchant.waitForResponse(r=>r.url().endsWith(`/redemptions/${redemption.id}/fulfill`)&&r.request().method()==='POST')
+  await merchant.getByTestId('ops-redemption-submit').click();expect((await handled).status()).toBe(200)
+ }finally{await merchant.close()}
+ await go(page,info.project.name==='mobile'?'我的':'我的商城')
+ await page.getByTestId('account-redemptions-entry').click()
+ const card=page.locator(`.m-redemption-card[data-redemption-id="${redemption.id}"]`)
+ await expect(card).toContainText('商家已记录处理')
+ await expect(card).toContainText('测试兑换已核对')
+ await page.screenshot({path:`docs/screenshots/${info.project.name}-redemptions.png`,fullPage:true})
+})
