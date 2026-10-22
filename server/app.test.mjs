@@ -7,7 +7,8 @@ async function fixture(t){
   const app=await buildApp({dbPath:':memory:',now:()=>clock,adminToken:'a'.repeat(40)});
   t.after(()=>app.close());
   const call=(method,url,payload,token,extra={})=>app.inject({method,url,payload,headers:{...(token?{authorization:`Bearer ${token}`} : {}),...extra}});
-  const login=async()=>{const r=await call('POST','/api/auth/demo',{consent:true});assert.equal(r.statusCode,201);return r.json()};
+  // Existing redemption invariants use a deliberately funded test fixture, not a signup gift.
+  const login=async()=>{const r=await call('POST','/api/auth/demo',{consent:true});assert.equal(r.statusCode,201);const value=r.json();assert.equal(value.user.points,0);app.db.prepare('UPDATE users SET points=1200 WHERE id=?').run(value.user.id);app.db.prepare('INSERT INTO ledger VALUES(?,?,?,?,?,?,?)').run(value.user.id,value.user.id,1200,'fixture','Test-only initial funding','fixture:'+value.user.id,clock);value.user.points=1200;return value};
   return {app,call,login,advance:ms=>clock+=ms};
 }
 test('public readiness, consent validation, session hashing and revocation',async t=>{

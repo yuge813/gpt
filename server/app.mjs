@@ -4,6 +4,7 @@ import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.mjs';
+import { registerCommerce } from './commerce.mjs';
 
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const fail=(status,message)=>Object.assign(new Error(message),{statusCode:status});
@@ -21,7 +22,9 @@ export async function buildApp(options={}){
   const origins=(options.origins||process.env.ALLOWED_ORIGINS||'http://localhost:5173,http://127.0.0.1:5173').split(',');
   await app.register(cors,{origin:origins,allowedHeaders:['Content-Type','Authorization','X-Admin-Token'],methods:['GET','POST']});
   await app.register(helmet,{global:true});
-  await app.register(rateLimit,{max:120,timeWindow:'1 minute'});
+  // Browsing/checkout refresh several read endpoints; protect the IP budget without
+  // throttling a legitimate shopping session. Sensitive actions keep tighter limits.
+  await app.register(rateLimit,{max:600,timeWindow:'1 minute'});
   app.decorate('db',db);
   app.addHook('onClose',()=>db.close());
   app.setErrorHandler((error,req,reply)=>{
@@ -57,16 +60,15 @@ export async function buildApp(options={}){
     const days=db.prepare('SELECT day FROM checkins WHERE user_id=? ORDER BY day DESC').all(uid).map(x=>x.day);
     let streak=0;let t=now();if(days[0]!==dayKey(t))t-=86400000;
     while(days.includes(dayKey(t))){streak++;t-=86400000;}
-    return {...u,checkedIn:days.includes(dayKey(now())),streak,adCount:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id=? AND day=? AND claimed=1').get(uid,dayKey(now())).n,adLimit:5};
+    return {...u,pendingPoints:db.prepare("SELECT COALESCE(SUM(reward),0) AS n FROM shop_orders WHERE user_id=? AND status IN ('paid','shipped')").get(uid).n,checkedIn:days.includes(dayKey(now())),streak,adCount:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id=? AND day=? AND claimed=1').get(uid,dayKey(now())).n,adLimit:5};
   }
   app.get('/api/health',async()=>({ok:true,mode,integrations:{ads:'demo',risk:'local-rules',payment:'disabled',wechat:'not-configured'}}));
-  app.get('/api/catalog',async()=>({products:db.prepare('SELECT * FROM products').all(),placements:db.prepare('SELECT * FROM placements WHERE enabled=1').all(),adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true'}));
+  app.get('/api/catalog',async()=>({products:db.prepare('SELECT * FROM products').all().map(p=>({...p,rewardPoints:Math.floor(p.price/100)})),placements:db.prepare('SELECT * FROM placements WHERE enabled=1').all(),adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true'}));
   app.post('/api/auth/demo',{schema:{body:bodySchema({consent:{type:'boolean',const:true}})},config:{rateLimit:{max:12,timeWindow:'1 minute'}}},async(req,reply)=>{
     const token=randomBytes(32).toString('hex'),uid=randomUUID();
     tx(()=>{
       db.prepare('INSERT INTO users VALUES(?,?,?,?)').run(uid,'曜集体验官',0,now());
       db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(sha(token),uid,now()+7*86400000);
-      ledger(uid,1200,'welcome','新朋友见面礼（演示积分）','welcome:'+uid);
     });
     reply.code(201);return {token,user:profile(uid),mode};
   });
@@ -120,13 +122,14 @@ export async function buildApp(options={}){
       if(!db.prepare('UPDATE products SET stock=stock-1 WHERE id=? AND stock>0').run(p.id).changes)throw fail(409,'商品库存不足');
       const id=randomUUID();ledger(req.uid,-p.points,'redeem','兑换 · '+p.name,'order:'+id);
       db.prepare('INSERT INTO orders VALUES(?,?,?,?,?,?,?,?)').run(id,req.uid,p.id,p.name,p.points,'demo_reserved',requestKey,now());
+      if(p.id==='coupon')db.prepare('INSERT INTO user_coupons VALUES(?,?,?,?,?,NULL,?)').run(randomUUID(),req.uid,2000,20000,now()+30*86400000,id);
       return db.prepare('SELECT * FROM orders WHERE id=?').get(id);
     });
     reply.code(201);return {order,user:profile(req.uid)};
   });
   app.get('/api/orders',{preHandler:auth},async req=>({items:db.prepare('SELECT id,product_id,name,points,status,created_at FROM orders WHERE user_id=? ORDER BY created_at DESC LIMIT 100').all(req.uid)}));
   app.get('/api/admin/overview',{preHandler:admin},async()=>({
-    mode,stats:{users:db.prepare('SELECT COUNT(*) AS n FROM users').get().n,orders:db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,issued:db.prepare('SELECT COALESCE(SUM(delta),0) AS n FROM ledger WHERE delta>0').get().n,adViews:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE claimed=1').get().n},
+    mode,stats:{users:db.prepare('SELECT COUNT(*) AS n FROM users').get().n,orders:db.prepare('SELECT (SELECT COUNT(*) FROM orders)+(SELECT COUNT(*) FROM shop_orders) AS n').get().n,issued:db.prepare('SELECT COALESCE(SUM(delta),0) AS n FROM ledger WHERE delta>0').get().n,adViews:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE claimed=1').get().n},
     adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true',
     placements:db.prepare('SELECT * FROM placements').all(),
     blockedUsers:db.prepare('SELECT * FROM blocked_users').all(),
@@ -148,5 +151,6 @@ export async function buildApp(options={}){
     else db.prepare('DELETE FROM blocked_users WHERE user_id=?').run(req.body.userId);
     db.prepare('INSERT INTO audit VALUES(?,?,?,?)').run(randomUUID(),'account.restrict',JSON.stringify(req.body),now());return {ok:true};
   }));
+  registerCommerce({app,db,now,auth,admin,tx,ledger,allowReward,profile});
   return app;
 }

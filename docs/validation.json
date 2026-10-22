@@ -1,15 +1,15 @@
 {
-  "verified_at": "2026-10-22T06:22:43.155793+00:00",
-  "workflow": "demo only",
+  "verified_at": "2026-10-22T07:01:34.372039+00:00",
+  "workflow": "shopping -> test payment -> demo shipping -> receipt -> shopping points -> coupon redemption -> discounted checkout",
   "install": "npm ci --no-fund: passed",
   "typecheck": "passed",
   "api_tests": {
-    "passed": 10,
+    "passed": 16,
     "failed": 0,
     "skipped": 0
   },
   "browser_tests": {
-    "passed": 4,
+    "passed": 6,
     "failed": 0,
     "skipped": 0,
     "targets": [
@@ -17,17 +17,20 @@
       "Chromium mobile iPhone 13 emulation"
     ],
     "flows": [
-      "consent and demo session",
-      "check-in",
-      "8-second internal reward demo",
-      "redemption and ledger balance",
-      "orders",
-      "admin authentication",
-      "ad placement toggle persistence",
-      "search",
-      "favorites",
+      "new account starts at zero points",
+      "shopping cart with quantity changes",
+      "test-only address creation and selection",
+      "server-calculated checkout amount",
+      "test payment does not award available points",
+      "demo shipment and receipt award points once",
+      "points redeem a shopping coupon",
+      "coupon reduces payable amount and future reward",
+      "order cancellation releases reserved resources",
+      "supplementary check-in and ad demo",
+      "product details and favorites",
+      "search empty state",
       "privacy dialog",
-      "no page errors; no horizontal overflow"
+      "authenticated merchant order viewer and ad positions"
     ]
   },
   "builds": {
@@ -60,5 +63,14 @@
     "install_script": "saved",
     "start_skill": "saved",
     "published": false
-  }
+  },
+  "version": "0.2.0",
+  "limitations": [
+    "payment and delivery are explicitly simulated",
+    "third-party advertising and Shumei not integrated",
+    "production authentication and privacy controls incomplete",
+    "refund with insufficient awarded points requires a not-yet-built manual after-sales workflow",
+    "stock photos are demonstrations and not proof of brand or merchandise authorization",
+    "documented unresolved build dependency advisory"
+  ]
 }
