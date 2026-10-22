@@ -122,7 +122,6 @@
         "fast-glob"
       ],
       "effects": [
-        "@dcloudio/uni-app",
         "@dcloudio/uni-components"
       ],
       "range": "*",
@@ -157,12 +156,16 @@
       "via": [
         "@dcloudio/uni-cli-shared"
       ],
-      "effects": [],
+      "effects": [
+        "@dcloudio/uni-app"
+      ],
       "range": "*",
       "nodes": [
         "node_modules/@dcloudio/uni-console"
       ],
-      "fixAvailable": true
+      "fixAvailable": {
+        "isSemVerMajor": true
+      }
     },
     "@dcloudio/uni-h5": {
       "name": "@dcloudio/uni-h5",
@@ -419,12 +422,12 @@
       "total": 21
     },
     "dependencies": {
-      "prod": 397,
-      "dev": 215,
+      "prod": 416,
+      "dev": 208,
       "optional": 53,
       "peer": 0,
       "peerOptional": 0,
-      "total": 664
+      "total": 676
     }
   }
 }

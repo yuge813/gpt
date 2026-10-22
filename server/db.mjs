@@ -36,12 +36,19 @@ export function openDb(path){
   CREATE TABLE IF NOT EXISTS shop_orders(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),number TEXT NOT NULL UNIQUE,amount INTEGER NOT NULL,reward INTEGER NOT NULL,status TEXT NOT NULL,request_key TEXT NOT NULL,fingerprint TEXT NOT NULL,address_json TEXT NOT NULL,coupon_id TEXT,created_at INTEGER NOT NULL,UNIQUE(user_id,request_key));
   CREATE TABLE IF NOT EXISTS shop_items(order_id TEXT NOT NULL REFERENCES shop_orders(id),product_id TEXT NOT NULL REFERENCES products(id),name TEXT NOT NULL,price INTEGER NOT NULL,quantity INTEGER NOT NULL,art TEXT NOT NULL,PRIMARY KEY(order_id,product_id));
   CREATE TABLE IF NOT EXISTS user_coupons(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),discount INTEGER NOT NULL,threshold INTEGER NOT NULL,expires_at INTEGER NOT NULL,used_order TEXT,redemption_id TEXT NOT NULL UNIQUE);
+  CREATE TABLE IF NOT EXISTS shipments(order_id TEXT PRIMARY KEY REFERENCES shop_orders(id),carrier TEXT NOT NULL,tracking TEXT NOT NULL,created_at INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS after_sales(id TEXT PRIMARY KEY,order_id TEXT NOT NULL UNIQUE REFERENCES shop_orders(id),user_id TEXT NOT NULL REFERENCES users(id),status TEXT NOT NULL,reason TEXT NOT NULL,resolution TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL,resolved_at INTEGER);
   CREATE INDEX IF NOT EXISTS shop_user_time ON shop_orders(user_id,created_at);`);
-  const insert=db.prepare('INSERT OR IGNORE INTO products VALUES(?,?,?,?,?,?,?,?,?,?)');
+  // Additive migrations preserve existing merchant rows and customer history.
+  const columns=new Set(db.prepare('PRAGMA table_info(products)').all().map(column=>column.name));
+  if(!columns.has('enabled'))db.exec('ALTER TABLE products ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1))');
+  if(!columns.has('version'))db.exec('ALTER TABLE products ADD COLUMN version INTEGER NOT NULL DEFAULT 1');
+  const insert=db.prepare('INSERT OR IGNORE INTO products(id,name,subtitle,category,price,points,stock,art,color,badge) VALUES(?,?,?,?,?,?,?,?,?,?)');
   for(const p of products)insert.run(p.id,p.name,p.subtitle,p.category,p.price,p.points,p.stock,p.art,p.color,p.badge);
   // Rename only the known original demonstration rows; preserve merchant customizations.
-  for(const [oldName,newName] of [['声屿 · 无线降噪耳机','声屿 · 头戴式立体声耳机'],['月弧 · 氛围台灯','月弧 · 极简阅读台灯'],['山野 · 随行保温杯','山野 · 日用陶瓷马克杯'],['轻旅 · 城市通勤包','轻旅 · 城市通勤双肩包']])db.prepare('UPDATE products SET name=? WHERE name=?').run(newName,oldName);
+  for(const [oldName,newName] of [['声屿 · 无线降噪耳机','声屿 · 头戴式立体声耳机'],['月弧 · 氛围台灯','月弧 · 极简阅读台灯'],['山野 · 随行保温杯','山野 · 日用陶瓷马克杯'],['轻旅 · 城市通勤包','轻旅 · 城市通勤双肩包']])db.prepare('UPDATE products SET name=?,version=version+1 WHERE name=?').run(newName,oldName);
   db.prepare('INSERT OR IGNORE INTO settings VALUES(?,?)').run('ads_enabled','true');
+  db.prepare('INSERT OR IGNORE INTO settings VALUES(?,?)').run('purchase_points_per_yuan','1');
   const placement=db.prepare('INSERT OR IGNORE INTO placements VALUES(?,?,?,?,0)');
   for(const p of [
     ['home_feature','首页品牌精选','home','banner'],['home_feed','商城信息流','shop','feed'],

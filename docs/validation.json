@@ -1,52 +1,47 @@
 {
-  "verified_at": "2026-10-22T07:01:34.372039+00:00",
-  "workflow": "shopping -> test payment -> demo shipping -> receipt -> shopping points -> coupon redemption -> discounted checkout",
-  "install": "npm ci --no-fund: passed",
+  "verified_at": "2026-10-22T10:53:58.776344+00:00",
+  "version": "0.3.0",
+  "workflow": "controlled trial: customer shopping and receipt rewards with merchant products, shipping and after-sales",
   "typecheck": "passed",
-  "api_tests": {
-    "passed": 16,
+  "automated_tests": {
+    "passed": 30,
     "failed": 0,
-    "skipped": 0
+    "skipped": 0,
+    "scope": "25 API/business tests + 5 startup/backup/static-serving tests"
   },
   "browser_tests": {
-    "passed": 6,
+    "passed": 8,
     "failed": 0,
     "skipped": 0,
     "targets": [
       "Chromium desktop 1440x1050",
-      "Chromium mobile iPhone 13 emulation"
+      "Chromium iPhone 13 emulation"
     ],
     "flows": [
-      "new account starts at zero points",
-      "shopping cart with quantity changes",
-      "test-only address creation and selection",
-      "server-calculated checkout amount",
-      "test payment does not award available points",
-      "demo shipment and receipt award points once",
-      "points redeem a shopping coupon",
-      "coupon reduces payable amount and future reward",
-      "order cancellation releases reserved resources",
-      "supplementary check-in and ad demo",
-      "product details and favorites",
-      "search empty state",
-      "privacy dialog",
-      "authenticated merchant order viewer and ad positions"
+      "shopping -> merchant UI shipping -> receipt -> points -> coupon -> discounted checkout",
+      "customer after-sales -> merchant UI approval -> stock and points reversal",
+      "product create/edit/offline via merchant UI and catalog persistence",
+      "stale inventory version conflicts",
+      "reward rule UI save and public server-derived rewards",
+      "anonymous admin denial",
+      "ad preview switches",
+      "supplementary signup/check-in/reward demo",
+      "search/details/favorites/privacy",
+      "no page errors and no horizontal overflow in shopping/after-sale flows"
     ]
   },
   "builds": {
     "h5": "passed",
     "mp-weixin": "passed compilation only",
-    "app": "passed resources compilation only"
+    "app": "passed shared resource compilation only"
   },
-  "not_verified": [
-    "WeChat developer tools and physical mini program",
-    "Android APK/AAB signing and physical devices",
-    "iOS IPA signing and physical devices",
-    "actual ad SDKs and revenue",
-    "Shumei integration",
-    "production authentication, payment and fulfillment",
-    "production security readiness"
-  ],
+  "prebuilt_runtime": {
+    "npm_ci": "75 packages installed, no front-end compiler required",
+    "browser_smoke": "passed: 6 products, same-origin API, authenticated merchant catalog, no page errors",
+    "sensitive_file_probe": "/.env rejected",
+    "static_security_tests": "source root and escaping directory symlinks rejected",
+    "backup": "consistent SQLite snapshot generated and integrity check passed"
+  },
   "dependency_audit": {
     "info": 0,
     "low": 0,
@@ -55,22 +50,24 @@
     "critical": 0,
     "total": 21
   },
-  "unresolved_advisories": [
-    "GHSA-vfj7-8cjw-p6xm (braces; build-tool dependency propagation)"
-  ],
-  "runtime_startup": "start:local verified with H5 HTTP 200 and API demo session + persisted check-in",
-  "configuration_draft": {
-    "install_script": "saved",
-    "start_skill": "saved",
-    "published": false
+  "runtime_dependency_audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
   },
-  "version": "0.2.0",
-  "limitations": [
-    "payment and delivery are explicitly simulated",
-    "third-party advertising and Shumei not integrated",
-    "production authentication and privacy controls incomplete",
-    "refund with insufficient awarded points requires a not-yet-built manual after-sales workflow",
-    "stock photos are demonstrations and not proof of brand or merchandise authorization",
-    "documented unresolved build dependency advisory"
-  ]
+  "remaining": [
+    "real payment and refund gateway",
+    "real advertising and revenue settlement",
+    "Shumei service",
+    "production customer authentication, admin RBAC/MFA and privacy lifecycle",
+    "live logistics and real fulfillment",
+    "signed Android/iOS packages and four-platform physical device validation",
+    "independent penetration test/load test/high availability",
+    "documented build-only braces advisory",
+    "financial exception resolution when awarded points already spent"
+  ],
+  "published_to_internet": false
 }

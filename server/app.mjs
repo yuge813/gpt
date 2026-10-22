@@ -5,6 +5,7 @@ import rateLimit from '@fastify/rate-limit';
 import { randomBytes, randomUUID, createHash, timingSafeEqual } from 'node:crypto';
 import { openDb } from './db.mjs';
 import { registerCommerce } from './commerce.mjs';
+import { publicProduct, registerOperations } from './operations.mjs';
 
 const sha=v=>createHash('sha256').update(v).digest('hex');
 const fail=(status,message)=>Object.assign(new Error(message),{statusCode:status});
@@ -63,7 +64,7 @@ export async function buildApp(options={}){
     return {...u,pendingPoints:db.prepare("SELECT COALESCE(SUM(reward),0) AS n FROM shop_orders WHERE user_id=? AND status IN ('paid','shipped')").get(uid).n,checkedIn:days.includes(dayKey(now())),streak,adCount:db.prepare('SELECT COUNT(*) AS n FROM ad_sessions WHERE user_id=? AND day=? AND claimed=1').get(uid,dayKey(now())).n,adLimit:5};
   }
   app.get('/api/health',async()=>({ok:true,mode,integrations:{ads:'demo',risk:'local-rules',payment:'disabled',wechat:'not-configured'}}));
-  app.get('/api/catalog',async()=>({products:db.prepare('SELECT * FROM products').all().map(p=>({...p,rewardPoints:Math.floor(p.price/100)})),placements:db.prepare('SELECT * FROM placements WHERE enabled=1').all(),adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true'}));
+  app.get('/api/catalog',async()=>({products:db.prepare('SELECT * FROM products WHERE enabled=1').all().map(p=>publicProduct(p,db)),placements:db.prepare('SELECT * FROM placements WHERE enabled=1').all(),adsEnabled:db.prepare('SELECT value FROM settings WHERE key=?').get('ads_enabled').value==='true'}));
   app.post('/api/auth/demo',{schema:{body:bodySchema({consent:{type:'boolean',const:true}})},config:{rateLimit:{max:12,timeWindow:'1 minute'}}},async(req,reply)=>{
     const token=randomBytes(32).toString('hex'),uid=randomUUID();
     tx(()=>{
@@ -114,12 +115,12 @@ export async function buildApp(options={}){
     const existing=db.prepare('SELECT * FROM orders WHERE user_id=? AND request_key=?').get(req.uid,requestKey);
     if(existing){if(existing.product_id!==productId)throw fail(409,'请求标识已用于其他商品');return {order:existing,user:profile(req.uid),replayed:true};}
     allowReward(req.uid,'redeem');
-    const p=db.prepare('SELECT * FROM products WHERE id=?').get(productId);
+    const p=db.prepare('SELECT * FROM products WHERE id=? AND enabled=1').get(productId);
     if(!p)throw fail(404,'商品不存在');
     const count=db.prepare('SELECT COUNT(*) AS n FROM orders WHERE user_id=? AND created_at>=?').get(req.uid,now()-3600000).n;
     if(count>=10){risk(req.uid,'redeem','hourly_limit');throw fail(429,'兑换过于频繁，请稍后再试');}
     const order=tx(()=>{
-      if(!db.prepare('UPDATE products SET stock=stock-1 WHERE id=? AND stock>0').run(p.id).changes)throw fail(409,'商品库存不足');
+      if(!db.prepare('UPDATE products SET stock=stock-1,version=version+1 WHERE id=? AND stock>0').run(p.id).changes)throw fail(409,'商品库存不足');
       const id=randomUUID();ledger(req.uid,-p.points,'redeem','兑换 · '+p.name,'order:'+id);
       db.prepare('INSERT INTO orders VALUES(?,?,?,?,?,?,?,?)').run(id,req.uid,p.id,p.name,p.points,'demo_reserved',requestKey,now());
       if(p.id==='coupon')db.prepare('INSERT INTO user_coupons VALUES(?,?,?,?,?,NULL,?)').run(randomUUID(),req.uid,2000,20000,now()+30*86400000,id);
@@ -152,5 +153,6 @@ export async function buildApp(options={}){
     db.prepare('INSERT INTO audit VALUES(?,?,?,?)').run(randomUUID(),'account.restrict',JSON.stringify(req.body),now());return {ok:true};
   }));
   registerCommerce({app,db,now,auth,admin,tx,ledger,allowReward,profile});
+  registerOperations({app,db,admin,tx,now});
   return app;
 }

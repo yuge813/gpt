@@ -1,4 +1,7 @@
 node_modules/
+.npm-cache/
+.backups/
+.release/
 dist/
 .env
 .data/
